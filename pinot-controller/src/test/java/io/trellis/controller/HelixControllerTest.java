@@ -19,53 +19,76 @@ import static org.awaitility.Awaitility.await;
 import java.time.Duration;
 import org.apache.curator.test.TestingServer;
 import org.apache.helix.HelixManager;
-import org.apache.helix.InstanceType;
 import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.junit.jupiter.api.Test;
 
 class HelixControllerTest {
-  private static HelixManager manager(String cluster, String id, InstanceType type, TestingServer server) {
+  private static HelixManager manager(
+      String cluster, String id, InstanceType type, TestingServer server) {
     return HelixManagerFactory.getZKHelixManager(cluster, id, type, server.getConnectString());
   }
 
-  @Test void twoControllersElectLeaderAndFailOver() throws Exception {
+  @Test
+  void twoControllersElectLeaderAndFailOver() throws Exception {
     try (var zk = new TestingServer()) {
       var admin = new ZKHelixAdmin(zk.getConnectString());
       try {
         assertThat(admin.addCluster("cluster")).isTrue();
-        try (var first = HelixController.start(manager("cluster", "controller-a", InstanceType.CONTROLLER, zk));
-             var second = HelixController.start(manager("cluster", "controller-b", InstanceType.CONTROLLER, zk))) {
+        try (var first =
+                HelixController.start(
+                    manager("cluster", "controller-a", InstanceType.CONTROLLER, zk));
+            var second =
+                HelixController.start(
+                    manager("cluster", "controller-b", InstanceType.CONTROLLER, zk))) {
           assertThat(first.isConnected()).isTrue();
           assertThat(second.isConnected()).isTrue();
-          await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> assertThat(first.isLeader() ^ second.isLeader()).isTrue());
+          await()
+              .atMost(Duration.ofSeconds(30))
+              .untilAsserted(() -> assertThat(first.isLeader() ^ second.isLeader()).isTrue());
           HelixController leader = first.isLeader() ? first : second;
           HelixController standby = leader == first ? second : first;
-          leader.close(); leader.close();
+          leader.close();
+          leader.close();
           assertThat(leader.isConnected()).isFalse();
           assertThat(leader.isLeader()).isFalse();
-          await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> assertThat(standby.isLeader()).isTrue());
+          await()
+              .atMost(Duration.ofSeconds(30))
+              .untilAsserted(() -> assertThat(standby.isLeader()).isTrue());
         }
-      } finally { admin.close(); }
+      } finally {
+        admin.close();
+      }
     }
   }
 
-  @Test void rejectsWrongTypeAndAlreadyConnectedManager() throws Exception {
+  @Test
+  void rejectsWrongTypeAndAlreadyConnectedManager() throws Exception {
     try (var zk = new TestingServer()) {
       var admin = new ZKHelixAdmin(zk.getConnectString());
       try {
         assertThat(admin.addCluster("cluster")).isTrue();
         var participant = manager("cluster", "p", InstanceType.PARTICIPANT, zk);
-        assertThatThrownBy(() -> HelixController.start(participant)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> HelixController.start(participant))
+            .isInstanceOf(IllegalArgumentException.class);
         assertThat(participant.isConnected()).isFalse();
         var existing = manager("cluster", "existing", InstanceType.CONTROLLER, zk);
         existing.connect();
         try {
-          assertThatThrownBy(() -> HelixController.start(existing)).isInstanceOf(IllegalStateException.class);
+          assertThatThrownBy(() -> HelixController.start(existing))
+              .isInstanceOf(IllegalStateException.class);
           assertThat(existing.isConnected()).isTrue();
-        } finally { existing.disconnect(); }
+        } finally {
+          existing.disconnect();
+        }
+        var missing = manager("missing", "unconfigured", InstanceType.CONTROLLER, zk);
+        assertThatThrownBy(() -> HelixController.start(missing)).isInstanceOf(Exception.class);
+        assertThat(missing.isConnected()).isFalse();
         assertThatNullPointerException().isThrownBy(() -> HelixController.start(null));
-      } finally { admin.close(); }
+      } finally {
+        admin.close();
+      }
     }
   }
 }
