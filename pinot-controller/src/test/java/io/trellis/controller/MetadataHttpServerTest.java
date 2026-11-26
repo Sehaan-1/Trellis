@@ -170,7 +170,9 @@ class MetadataHttpServerTest {
     var store = new ZooKeeperMetadataStore(curator, "/after-close");
     var schema =
         new io.trellis.spi.Schema(
-            "s", List.of(new io.trellis.spi.Schema.Field("x", io.trellis.spi.Schema.DataType.LONG, false)));
+            "s",
+            List.of(
+                new io.trellis.spi.Schema.Field("x", io.trellis.spi.Schema.DataType.LONG, false)));
     assertThat(store.createSchema(schema)).isZero();
   }
 
