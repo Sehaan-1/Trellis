@@ -22,20 +22,30 @@ import org.apache.helix.zookeeper.datamodel.ZNRecord;
 import org.junit.jupiter.api.Test;
 
 class SchemaRecordTest {
-  @Test void preservesFieldsOrderAndRejectsInvalidRecords() {
-    var schema = new Schema("events", List.of(new Schema.Field("text", Schema.DataType.STRING, false), new Schema.Field("nums", Schema.DataType.LONG, true)));
+  @Test
+  void preservesFieldsOrderAndRejectsInvalidRecords() {
+    var schema =
+        new Schema(
+            "events",
+            List.of(
+                new Schema.Field("text", Schema.DataType.STRING, false),
+                new Schema.Field("nums", Schema.DataType.LONG, true)));
     var decoded = SchemaRecord.decode(SchemaRecord.encode(schema));
     assertThat(decoded.name()).isEqualTo(schema.name());
     assertThat(decoded.fields()).isEqualTo(schema.fields());
     assertThatNullPointerException().isThrownBy(() -> SchemaRecord.encode(null));
     assertThatNullPointerException().isThrownBy(() -> SchemaRecord.decode(null));
     var invalid = new ZNRecord("s");
-    assertThatThrownBy(() -> SchemaRecord.decode(invalid)).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> SchemaRecord.decode(invalid))
+        .isInstanceOf(IllegalArgumentException.class);
     invalid.setListField("trellis.fields", List.of("x"));
-    assertThatThrownBy(() -> SchemaRecord.decode(invalid)).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> SchemaRecord.decode(invalid))
+        .isInstanceOf(IllegalArgumentException.class);
     invalid.setMapField("trellis.field.0", Map.of("type", "LONG", "multiValue", "yes"));
-    assertThatThrownBy(() -> SchemaRecord.decode(invalid)).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> SchemaRecord.decode(invalid))
+        .isInstanceOf(IllegalArgumentException.class);
     invalid.setMapField("trellis.field.0", Map.of("type", "WRONG", "multiValue", "true"));
-    assertThatThrownBy(() -> SchemaRecord.decode(invalid)).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> SchemaRecord.decode(invalid))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 }

@@ -23,6 +23,7 @@ import org.apache.helix.zookeeper.datamodel.ZNRecord;
 /** Conversion between ordered SPI schemas and Helix records, independent of persistence. */
 public final class SchemaRecord {
   private static final String FIELDS = "trellis.fields";
+
   private SchemaRecord() {}
 
   public static ZNRecord encode(Schema schema) {
@@ -32,7 +33,9 @@ public final class SchemaRecord {
     for (int i = 0; i < schema.fields().size(); i++) {
       Schema.Field field = schema.fields().get(i);
       names.add(field.name());
-      record.setMapField("trellis.field." + i, Map.of("type", field.type().name(), "multiValue", Boolean.toString(field.multiValue())));
+      record.setMapField(
+          "trellis.field." + i,
+          Map.of("type", field.type().name(), "multiValue", Boolean.toString(field.multiValue())));
     }
     record.setListField(FIELDS, names);
     return record;
@@ -41,14 +44,21 @@ public final class SchemaRecord {
   public static Schema decode(ZNRecord record) {
     Objects.requireNonNull(record, "record");
     List<String> names = record.getListField(FIELDS);
-    if (names == null || names.isEmpty()) throw new IllegalArgumentException("missing schema fields");
+    if (names == null || names.isEmpty())
+      throw new IllegalArgumentException("missing schema fields");
     List<Schema.Field> fields = new ArrayList<>(names.size());
     for (int i = 0; i < names.size(); i++) {
       Map<String, String> info = record.getMapField("trellis.field." + i);
-      if (info == null || info.get("type") == null || info.get("multiValue") == null) throw new IllegalArgumentException("missing field metadata");
+      if (info == null || info.get("type") == null || info.get("multiValue") == null)
+        throw new IllegalArgumentException("missing field metadata");
       String multi = info.get("multiValue");
-      if (!multi.equals("true") && !multi.equals("false")) throw new IllegalArgumentException("invalid multiValue");
-      fields.add(new Schema.Field(names.get(i), Schema.DataType.valueOf(info.get("type")), Boolean.parseBoolean(multi)));
+      if (!multi.equals("true") && !multi.equals("false"))
+        throw new IllegalArgumentException("invalid multiValue");
+      fields.add(
+          new Schema.Field(
+              names.get(i),
+              Schema.DataType.valueOf(info.get("type")),
+              Boolean.parseBoolean(multi)));
     }
     return new Schema(record.getId(), fields);
   }
