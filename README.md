@@ -17,7 +17,7 @@ A staged, Pinot-inspired OLAP system. This repository contains a build scaffold 
 
 ## Build
 
-Install JDK 17 or newer and run `./mvnw verify` (on Windows, `mvnw.cmd verify`). The wrapper downloads Maven 3.9.9 from Maven Central; dependencies and plugins also require Maven Central access. Run `./mvnw -pl pinot-bom -am verify` for this slice. `./mvnw -Pfast-dev verify` skips formatting and license checks, but not tests; use the default profile before merging. Apply Java formatting with `./mvnw -pl pinot-spi,pinot-common,pinot-segment-spi,pinot-segment-local com.diffplug.spotless:spotless-maven-plugin:2.43.0:apply`.
+Install JDK 17 or newer and run `./mvnw verify` (on Windows, `mvnw.cmd verify`). The wrapper downloads Maven 3.9.9 from Maven Central; dependencies and plugins also require Maven Central access. Run `./mvnw -pl pinot-bom -am verify` for this slice. `./mvnw -Pfast-dev verify` skips formatting and license checks, but not tests; use the default profile before merging. Apply Java formatting with `./mvnw -pl pinot-spi,pinot-common,pinot-segment-spi,pinot-segment-local,pinot-core com.diffplug.spotless:spotless-maven-plugin:2.43.0:apply`.
 
 The root is an aggregator and parent for future modules. The standalone `io.trellis:pinot-bom:0.1.0-SNAPSHOT` contains centrally managed dependency versions; future consumers must explicitly import it in `dependencyManagement`. It is not imported by the root, avoiding a reactor model cycle. The BOM lists candidate versions, not runtime dependencies or a promise of adoption; each future slice must review and verify the dependencies it uses. CI checks the reactor on Java 17.
 
@@ -42,3 +42,9 @@ Run `./mvnw -pl pinot-segment-local -am verify` for the affected modules.
 ## Mutable segments
 
 `InMemorySegments.create(schema)` creates an append-only, volatile Lucene-backed segment using the same field restrictions as the immutable format. Appends and snapshot creation are serialized and assign stable document IDs. A snapshot is point-in-time and remains valid after the mutable segment is closed; callers must close each snapshot. Rows must not be mutated concurrently with an append. This is not durable ingestion, upsert, stream processing or a controller-coordinated commit.
+
+## Local SQL execution
+
+`pinot-core` provides `LocalQueryExecutor` for one logical table backed by one or more compatible immutable segment readers. Calcite validates, plans and executes SQL locally; the caller owns and must keep the readers open. Identifiers are case-sensitive. Results are materialized with a mandatory output-row cap that rejects overflow, but this cap does not bound intermediate memory or CPU. This API is not a network server, security boundary or distributed query engine; use trusted queries only.
+
+Run `./mvnw -pl pinot-core -am verify` for the affected reactor.
