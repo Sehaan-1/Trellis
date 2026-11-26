@@ -17,16 +17,16 @@ import io.trellis.segment.spi.ImmutableSegment;
 import io.trellis.segment.spi.MutableSegment;
 import io.trellis.spi.GenericRow;
 import io.trellis.spi.Schema;
-import java.io.IOException;
 import java.io.Closeable;
+import java.io.IOException;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.ByteBuffersDirectory;
-import org.apache.lucene.util.RefCount;
 import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.RefCount;
 
 /** Factory for append-only, volatile segments backed by Lucene in-memory doc values. */
 public final class InMemorySegments {

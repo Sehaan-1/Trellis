@@ -132,15 +132,18 @@ class MutableSegmentTest {
       }
     }
   }
+
   @Test
   void snapshotsRaceWithAppendsWithoutPartialRows() throws Exception {
     try (var mutable = InMemorySegments.create(SCHEMA)) {
       var executor = Executors.newSingleThreadExecutor();
       try {
-        var appends = executor.submit(() -> {
-          for (int i = 0; i < 100; i++) mutable.append(row("r" + i, i));
-          return null;
-        });
+        var appends =
+            executor.submit(
+                () -> {
+                  for (int i = 0; i < 100; i++) mutable.append(row("r" + i, i));
+                  return null;
+                });
         for (int i = 0; i < 40; i++) {
           try (var snapshot = mutable.snapshot()) {
             int count = snapshot.rowCount();
@@ -157,5 +160,4 @@ class MutableSegmentTest {
       }
     }
   }
-
 }
