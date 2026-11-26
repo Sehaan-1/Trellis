@@ -19,12 +19,20 @@ import java.io.IOException;
 /** Read-only columnar segment. Document IDs are zero-based. Close must not race with reads. */
 public interface ImmutableSegment extends AutoCloseable {
   Schema schema();
+
   int rowCount();
+
   long getLong(int documentId, String column) throws IOException;
+
   String getString(int documentId, String column) throws IOException;
+
   /** Ordinals are zero-based in Lucene UTF-8 byte order, not locale collation order. */
   int dictionaryOrdinal(int documentId, String column) throws IOException;
+
   int dictionarySize(String column) throws IOException;
+
   String dictionaryValue(String column, int ordinal) throws IOException;
-  @Override void close() throws IOException;
+
+  @Override
+  void close() throws IOException;
 }

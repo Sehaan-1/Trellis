@@ -38,21 +38,24 @@ public final class LocalSegments {
   private LocalSegments() {}
 
   /**
-   * Writes one segment. The parent directory must exist. On failure the destination may remain
-   * and must be removed by the caller; no incomplete commit is published. Rows are consumed once.
-   * A row must have exactly the schema fields, with non-null String or Long values as appropriate.
+   * Writes one segment. The parent directory must exist. On failure the destination may remain and
+   * must be removed by the caller; no incomplete commit is published. Rows are consumed once. A row
+   * must have exactly the schema fields, with non-null String or Long values as appropriate.
    */
-  public static void write(Path destination, Schema schema, Iterable<GenericRow> rows) throws IOException {
+  public static void write(Path destination, Schema schema, Iterable<GenericRow> rows)
+      throws IOException {
     Objects.requireNonNull(destination, "destination");
     validateSchema(schema);
     Objects.requireNonNull(rows, "rows");
     Files.createDirectory(destination);
     try (MMapDirectory directory = new MMapDirectory(destination);
-         IndexWriter writer = new IndexWriter(directory, new IndexWriterConfig().setCommitOnClose(false))) {
+        IndexWriter writer =
+            new IndexWriter(directory, new IndexWriterConfig().setCommitOnClose(false))) {
       for (GenericRow row : rows) {
         Objects.requireNonNull(row, "row");
         Map<String, Object> values = row.values();
-        if (values.size() != schema.fields().size()) throw new IllegalArgumentException("row fields do not match schema");
+        if (values.size() != schema.fields().size())
+          throw new IllegalArgumentException("row fields do not match schema");
         Document doc = new Document();
         for (Schema.Field field : schema.fields()) {
           Object value = values.get(field.name());
@@ -62,7 +65,8 @@ public final class LocalSegments {
           } else if (field.type() == Schema.DataType.LONG && value instanceof Long number) {
             doc.add(new NumericDocValuesField(field.name(), number));
           } else {
-            throw new IllegalArgumentException("missing or invalid value for column: " + field.name());
+            throw new IllegalArgumentException(
+                "missing or invalid value for column: " + field.name());
           }
         }
         writer.addDocument(doc);
@@ -79,8 +83,11 @@ public final class LocalSegments {
 
   static void validateSchema(Schema schema) {
     Objects.requireNonNull(schema, "schema");
+    validateString(schema.name());
     for (Schema.Field f : schema.fields()) {
-      if (f.multiValue() || (f.type() != Schema.DataType.STRING && f.type() != Schema.DataType.LONG)) {
+      validateString(f.name());
+      if (f.multiValue()
+          || (f.type() != Schema.DataType.STRING && f.type() != Schema.DataType.LONG)) {
         throw new IllegalArgumentException("unsupported field: " + f.name());
       }
     }
@@ -88,8 +95,11 @@ public final class LocalSegments {
 
   private static void validateString(String value) {
     try {
-      StandardCharsets.UTF_8.newEncoder().onMalformedInput(CodingErrorAction.REPORT)
-          .onUnmappableCharacter(CodingErrorAction.REPORT).encode(java.nio.CharBuffer.wrap(value));
+      StandardCharsets.UTF_8
+          .newEncoder()
+          .onMalformedInput(CodingErrorAction.REPORT)
+          .onUnmappableCharacter(CodingErrorAction.REPORT)
+          .encode(java.nio.CharBuffer.wrap(value));
     } catch (CharacterCodingException e) {
       throw new IllegalArgumentException("string is not valid Unicode", e);
     }

@@ -28,26 +28,60 @@ import org.junit.jupiter.api.io.TempDir;
 
 class SegmentValidationTest {
   @TempDir Path temp;
-  private static final Schema SCHEMA = new Schema("s", List.of(new Schema.Field("x", Schema.DataType.STRING, false)));
+  private static final Schema SCHEMA =
+      new Schema("s", List.of(new Schema.Field("x", Schema.DataType.STRING, false)));
 
-  @Test void rejectsUnsupportedAndInvalidInputsWithoutCommit() throws Exception {
+  @Test
+  void rejectsUnsupportedAndInvalidInputsWithoutCommit() throws Exception {
     var unsupported = new Schema("s", List.of(new Schema.Field("x", Schema.DataType.INT, false)));
-    assertThatThrownBy(() -> LocalSegments.write(temp.resolve("unsupported"), unsupported, List.of())).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(
+            () -> LocalSegments.write(temp.resolve("unsupported"), unsupported, List.of()))
+        .isInstanceOf(IllegalArgumentException.class);
     assertThat(Files.exists(temp.resolve("unsupported"))).isFalse();
     var multi = new Schema("s", List.of(new Schema.Field("x", Schema.DataType.STRING, true)));
-    assertThatThrownBy(() -> LocalSegments.write(temp.resolve("multi"), multi, List.of())).isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> LocalSegments.write(temp.resolve("missing"), SCHEMA, List.of(new GenericRow()))).isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> LocalSegments.open(temp.resolve("missing"))).isInstanceOf(java.io.IOException.class);
-    assertThatThrownBy(() -> LocalSegments.write(temp.resolve("null"), SCHEMA, List.of(new GenericRow().put("x", null)))).isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> LocalSegments.write(temp.resolve("wrong"), SCHEMA, List.of(new GenericRow().put("x", 1L)))).isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> LocalSegments.write(temp.resolve("unicode"), SCHEMA, List.of(new GenericRow().put("x", "\uD800")))).isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> LocalSegments.write(temp, SCHEMA, List.of())).isInstanceOf(java.nio.file.FileAlreadyExistsException.class);
+    assertThatThrownBy(() -> LocalSegments.write(temp.resolve("multi"), multi, List.of()))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(
+            () -> LocalSegments.write(temp.resolve("missing"), SCHEMA, List.of(new GenericRow())))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> LocalSegments.open(temp.resolve("missing")))
+        .isInstanceOf(java.io.IOException.class);
+    assertThatThrownBy(
+            () ->
+                LocalSegments.write(
+                    temp.resolve("null"), SCHEMA, List.of(new GenericRow().put("x", null))))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(
+            () ->
+                LocalSegments.write(
+                    temp.resolve("wrong"), SCHEMA, List.of(new GenericRow().put("x", 1L))))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(
+            () ->
+                LocalSegments.write(
+                    temp.resolve("unicode"), SCHEMA, List.of(new GenericRow().put("x", "\uD800"))))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> LocalSegments.write(temp, SCHEMA, List.of()))
+        .isInstanceOf(java.nio.file.FileAlreadyExistsException.class);
   }
 
-  @Test void rejectsForeignIndexMetadata() throws Exception {
+  @Test
+  void openingMissingPathDoesNotCreateIt() {
+    Path path = temp.resolve("absent");
+    assertThatThrownBy(() -> LocalSegments.open(path)).isInstanceOf(java.nio.file.NoSuchFileException.class);
+    assertThat(Files.exists(path)).isFalse();
+  }
+
+  @Test
+  void rejectsForeignIndexMetadata() throws Exception {
     Path path = temp.resolve("foreign");
     Files.createDirectory(path);
-    try (var dir = new MMapDirectory(path); var writer = new IndexWriter(dir, new IndexWriterConfig())) { writer.commit(); }
-    assertThatThrownBy(() -> LocalSegments.open(path)).isInstanceOf(java.io.IOException.class).hasMessageContaining("metadata");
+    try (var dir = new MMapDirectory(path);
+        var writer = new IndexWriter(dir, new IndexWriterConfig())) {
+      writer.commit();
+    }
+    assertThatThrownBy(() -> LocalSegments.open(path))
+        .isInstanceOf(java.io.IOException.class)
+        .hasMessageContaining("metadata");
   }
 }
