@@ -32,47 +32,82 @@ import org.apache.calcite.sql.type.SqlTypeName;
 final class SegmentTable extends AbstractTable implements ScannableTable {
   private final List<ImmutableSegment> segments;
   private final Schema schema;
-  SegmentTable(List<ImmutableSegment> segments, Schema schema) { this.segments = segments; this.schema = schema; }
 
-  @Override public RelDataType getRowType(RelDataTypeFactory factory) {
+  SegmentTable(List<ImmutableSegment> segments, Schema schema) {
+    this.segments = segments;
+    this.schema = schema;
+  }
+
+  @Override
+  public RelDataType getRowType(RelDataTypeFactory factory) {
     var builder = factory.builder();
     for (Schema.Field field : schema.fields()) {
-      builder.add(field.name(), field.type() == Schema.DataType.STRING ? SqlTypeName.VARCHAR : SqlTypeName.BIGINT).nullable(false);
+      builder
+          .add(
+              field.name(),
+              field.type() == Schema.DataType.STRING ? SqlTypeName.VARCHAR : SqlTypeName.BIGINT)
+          .nullable(false);
     }
     return builder.build();
   }
 
-  @Override public Enumerable<Object[]> scan(DataContext root) {
+  @Override
+  public Enumerable<Object[]> scan(DataContext root) {
     return new AbstractEnumerable<>() {
-      @Override public Enumerator<Object[]> enumerator() {
+      @Override
+      public Enumerator<Object[]> enumerator() {
         return new Enumerator<>() {
           int segmentIndex;
           int nextDocument;
           Object[] current;
-          @Override public Object[] current() {
-            if (current == null) throw new IllegalStateException("enumerator is not positioned on a row");
+
+          @Override
+          public Object[] current() {
+            if (current == null)
+              throw new IllegalStateException("enumerator is not positioned on a row");
             return current;
           }
-          @Override public boolean moveNext() {
+
+          @Override
+          public boolean moveNext() {
             while (segmentIndex < segments.size()) {
               ImmutableSegment segment = segments.get(segmentIndex);
-              if (nextDocument >= segment.rowCount()) { segmentIndex++; nextDocument = 0; continue; }
+              if (nextDocument >= segment.rowCount()) {
+                segmentIndex++;
+                nextDocument = 0;
+                continue;
+              }
               int doc = nextDocument++;
               Object[] values = new Object[schema.fields().size()];
               try {
                 for (int i = 0; i < values.length; i++) {
                   Schema.Field field = schema.fields().get(i);
-                  values[i] = field.type() == Schema.DataType.STRING ? segment.getString(doc, field.name()) : segment.getLong(doc, field.name());
+                  values[i] =
+                      field.type() == Schema.DataType.STRING
+                          ? segment.getString(doc, field.name())
+                          : segment.getLong(doc, field.name());
                 }
-              } catch (IOException e) { throw new UncheckedIOException("segment read failed", e); }
+              } catch (IOException e) {
+                throw new UncheckedIOException("segment read failed", e);
+              }
               current = values;
               return true;
             }
             current = null;
             return false;
           }
-          @Override public void reset() { segmentIndex = 0; nextDocument = 0; current = null; }
-          @Override public void close() { current = null; }
+
+          @Override
+          public void reset() {
+            segmentIndex = 0;
+            nextDocument = 0;
+            current = null;
+          }
+
+          @Override
+          public void close() {
+            current = null;
+          }
         };
       }
     };

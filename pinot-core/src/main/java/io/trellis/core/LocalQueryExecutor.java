@@ -20,8 +20,8 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
-import java.sql.SQLException;
 import java.sql.SQLDataException;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
@@ -40,7 +40,9 @@ public final class LocalQueryExecutor {
    * and must not close them concurrently. Names are case-sensitive. The result limit rejects,
    * rather than truncates, excess output rows. This is not a bound on intermediate work or memory.
    */
-  public static QueryResult execute(String tableName, List<? extends ImmutableSegment> segments, String sql, int maxRows) throws SQLException {
+  public static QueryResult execute(
+      String tableName, List<? extends ImmutableSegment> segments, String sql, int maxRows)
+      throws SQLException {
     Objects.requireNonNull(tableName, "tableName");
     if (tableName.isBlank()) throw new IllegalArgumentException("table name must not be blank");
     Objects.requireNonNull(sql, "sql");
@@ -49,28 +51,40 @@ public final class LocalQueryExecutor {
     if (inputs.isEmpty()) throw new IllegalArgumentException("at least one segment is required");
     Schema schema = inputs.get(0).schema();
     for (Schema.Field field : schema.fields()) {
-      if (field.multiValue() || (field.type() != Schema.DataType.STRING && field.type() != Schema.DataType.LONG))
+      if (field.multiValue()
+          || (field.type() != Schema.DataType.STRING && field.type() != Schema.DataType.LONG))
         throw new IllegalArgumentException("unsupported field: " + field.name());
     }
     for (ImmutableSegment segment : inputs) {
-      if (!schema.fields().equals(segment.schema().fields())) throw new IllegalArgumentException("segment schemas do not match");
+      if (!schema.name().equals(segment.schema().name())
+          || !schema.fields().equals(segment.schema().fields()))
+        throw new IllegalArgumentException("segment schemas do not match");
     }
     try {
-      if (!SqlQueries.parse(sql).getKind().belongsTo(SqlKind.QUERY)) throw new SQLException("only queries are supported");
-    } catch (SqlParseException e) { throw new SQLException("invalid SQL query", e); }
+      if (!SqlQueries.parse(sql).getKind().belongsTo(SqlKind.QUERY))
+        throw new SQLException("only queries are supported");
+    } catch (SqlParseException e) {
+      throw new SQLException("invalid SQL query", e);
+    }
     Properties properties = new Properties();
     properties.setProperty("caseSensitive", "true");
     properties.setProperty("unquotedCasing", "UNCHANGED");
     properties.setProperty("quotedCasing", "UNCHANGED");
     try (Connection connection = DriverManager.getConnection("jdbc:calcite:", properties)) {
-      connection.unwrap(CalciteConnection.class).getRootSchema().add(tableName, new SegmentTable(inputs, schema));
-      try (Statement statement = connection.createStatement(); ResultSet result = statement.executeQuery(sql)) {
+      connection
+          .unwrap(CalciteConnection.class)
+          .getRootSchema()
+          .add(tableName, new SegmentTable(inputs, schema));
+      try (Statement statement = connection.createStatement();
+          ResultSet result = statement.executeQuery(sql)) {
         ResultSetMetaData metadata = result.getMetaData();
         List<String> columns = new ArrayList<>();
-        for (int i = 1; i <= metadata.getColumnCount(); i++) columns.add(metadata.getColumnLabel(i));
+        for (int i = 1; i <= metadata.getColumnCount(); i++)
+          columns.add(metadata.getColumnLabel(i));
         List<List<Object>> rows = new ArrayList<>();
         while (result.next()) {
-          if (rows.size() == maxRows) throw new SQLDataException("query exceeds maxRows: " + maxRows);
+          if (rows.size() == maxRows)
+            throw new SQLDataException("query exceeds maxRows: " + maxRows);
           List<Object> row = new ArrayList<>(columns.size());
           for (int i = 1; i <= columns.size(); i++) row.add(result.getObject(i));
           rows.add(row);

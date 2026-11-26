@@ -26,7 +26,8 @@ public record QueryResult(List<String> columns, List<List<Object>> rows) {
     List<List<Object>> copy = new ArrayList<>(rows.size());
     for (List<Object> row : rows) {
       Objects.requireNonNull(row, "row");
-      if (row.size() != columns.size()) throw new IllegalArgumentException("row width does not match columns");
+      if (row.size() != columns.size())
+        throw new IllegalArgumentException("row width does not match columns");
       copy.add(Collections.unmodifiableList(new ArrayList<>(row)));
     }
     rows = Collections.unmodifiableList(copy);
