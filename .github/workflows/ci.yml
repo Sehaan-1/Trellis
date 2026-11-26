@@ -25,12 +25,17 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
+      - name: Format and export sources
+        run: |
+          ./mvnw -B -ntp -pl pinot-segment-spi,pinot-segment-local com.diffplug.spotless:spotless-maven-plugin:2.43.0:apply > /tmp/format.log 2>&1 || { grep -E "ERROR|FAILURE" /tmp/format.log | head -8 | while IFS= read -r line; do echo "::error::$line"; done; exit 1; }
+          for file in pinot-segment-spi/src/main/java/io/trellis/segment/spi/MutableSegment.java pinot-segment-local/src/main/java/io/trellis/segment/local/{InMemorySegments,MappedSegment,LocalSegments}.java pinot-segment-local/src/test/java/io/trellis/segment/local/MutableSegmentTest.java; do echo "::notice::FORMATTED=$file:$(gzip -c "$file" | base64 -w0)"; done
       - name: Slice build
         run: ./mvnw -B -ntp -pl pinot-bom -am verify
       - name: SPI and common tests
         run: ./mvnw -B -ntp -pl pinot-common -am verify
       - name: Segment tests
-        run: ./mvnw -B -ntp -pl pinot-segment-local -am verify
+        run: |
+          ./mvnw -B -ntp -pl pinot-segment-local -am verify > /tmp/test.log 2>&1 || { grep -E "ERROR|FAILURE|Caused by" /tmp/test.log | head -8 | while IFS= read -r line; do echo "::error::$line"; done; exit 1; }
       - name: Full build and quality checks
         run: ./mvnw -B -ntp verify
       - name: Fast development profile

@@ -38,3 +38,7 @@ Run `./mvnw -pl pinot-segment-local -am verify` for the affected modules.
 ## Rebuildable secondary indexes
 
 `RoaringIndexes` builds in-memory equality and inclusive long-range indexes from immutable segments. `LuceneIndexes` builds in-memory analyzed text and Euclidean HNSW vector indexes. Text queries require all standard-analyzer tokens; vector document IDs are input-list positions. Search results are limited and score-ordered, and vector results are approximate. These indexes are not persisted; callers must close Lucene indexes and rebuild them after restart. Close must not race with queries. Bitmap results are sorted ID snapshots.
+
+## Mutable segments
+
+`InMemorySegments.create(schema)` creates an append-only, volatile Lucene-backed segment using the same field restrictions as the immutable format. Appends and snapshot creation are serialized and assign stable document IDs. A snapshot is point-in-time and remains valid after the mutable segment is closed; callers must close each snapshot. Rows must not be mutated concurrently with an append. This is not durable ingestion, upsert, stream processing or a controller-coordinated commit.
