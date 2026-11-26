@@ -20,10 +20,15 @@ import java.io.IOException;
 /** Thread-safe append-only segment. Rows must not be mutated while being appended. */
 public interface MutableSegment extends AutoCloseable {
   Schema schema();
+
   int rowCount();
+
   /** Atomically appends a row and returns its zero-based document ID. */
   int append(GenericRow row) throws IOException;
+
   /** A point-in-time reader, independently owned and valid after this segment closes. */
   ImmutableSegment snapshot() throws IOException;
-  @Override void close() throws IOException;
+
+  @Override
+  void close() throws IOException;
 }

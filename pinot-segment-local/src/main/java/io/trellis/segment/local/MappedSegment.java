@@ -15,9 +15,8 @@ package io.trellis.segment.local;
 
 import io.trellis.segment.spi.ImmutableSegment;
 import io.trellis.spi.Schema;
-import java.io.IOException;
 import java.io.Closeable;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.NotDirectoryException;
@@ -25,6 +24,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.MultiDocValues;
 import org.apache.lucene.index.NumericDocValues;

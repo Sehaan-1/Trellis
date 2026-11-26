@@ -73,7 +73,8 @@ public final class LocalSegments {
         validateString(string);
         BytesRef bytes = new BytesRef(string);
         if (bytes.length > IndexWriter.MAX_TERM_LENGTH)
-          throw new IllegalArgumentException("string exceeds Lucene doc-values limit: " + field.name());
+          throw new IllegalArgumentException(
+              "string exceeds Lucene doc-values limit: " + field.name());
         doc.add(new SortedDocValuesField(field.name(), bytes));
       } else if (field.type() == Schema.DataType.LONG && value instanceof Long number) {
         doc.add(new NumericDocValuesField(field.name(), number));

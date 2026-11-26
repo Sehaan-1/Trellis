@@ -18,6 +18,7 @@ import io.trellis.segment.spi.MutableSegment;
 import io.trellis.spi.GenericRow;
 import io.trellis.spi.Schema;
 import java.io.IOException;
+import java.io.Closeable;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
@@ -25,6 +26,7 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.ByteBuffersDirectory;
 import org.apache.lucene.util.RefCount;
+import org.apache.lucene.util.IOUtils;
 
 /** Factory for append-only, volatile segments backed by Lucene in-memory doc values. */
 public final class InMemorySegments {
@@ -34,10 +36,15 @@ public final class InMemorySegments {
     LocalSegments.validateSchema(schema);
     ByteBuffersDirectory directory = new ByteBuffersDirectory();
     try {
-      IndexWriter writer = new IndexWriter(directory, new IndexWriterConfig().setCommitOnClose(false));
+      IndexWriter writer =
+          new IndexWriter(directory, new IndexWriterConfig().setCommitOnClose(false));
       return new Mutable(schema, directory, writer);
     } catch (IOException | RuntimeException e) {
-      try { directory.close(); } catch (IOException close) { e.addSuppressed(close); }
+      try {
+        directory.close();
+      } catch (IOException close) {
+        e.addSuppressed(close);
+      }
       throw e;
     }
   }
@@ -52,42 +59,61 @@ public final class InMemorySegments {
     Mutable(Schema schema, ByteBuffersDirectory directory, IndexWriter writer) {
       this.schema = schema;
       this.writer = writer;
-      this.directory = new RefCount<>(directory) {
-        @Override protected void release() throws IOException { object.close(); }
-      };
+      this.directory =
+          new RefCount<>(directory) {
+            @Override
+            protected void release() throws IOException {
+              object.close();
+            }
+          };
     }
 
     private void ensureOpen() {
       if (closed) throw new AlreadyClosedException("mutable segment is closed");
     }
 
-    @Override public Schema schema() { return schema; }
-    @Override public synchronized int rowCount() { ensureOpen(); return count; }
+    @Override
+    public Schema schema() {
+      return schema;
+    }
 
-    @Override public synchronized int append(GenericRow row) throws IOException {
+    @Override
+    public synchronized int rowCount() {
+      ensureOpen();
+      return count;
+    }
+
+    @Override
+    public synchronized int append(GenericRow row) throws IOException {
       ensureOpen();
       Document document = LocalSegments.document(schema, row);
       try {
         writer.addDocument(document);
       } catch (IOException | RuntimeException e) {
         // Lucene may have consumed a document ID before failing; prevent further use.
-        try { close(); } catch (IOException close) { e.addSuppressed(close); }
+        try {
+          close();
+        } catch (IOException close) {
+          e.addSuppressed(close);
+        }
         throw e;
       }
       return count++;
     }
 
-    @Override public synchronized ImmutableSegment snapshot() throws IOException {
+    @Override
+    public synchronized ImmutableSegment snapshot() throws IOException {
       ensureOpen();
       DirectoryReader reader = DirectoryReader.open(writer);
       directory.incRef();
       return MappedSegment.fromReader(reader, schema, directory::decRef);
     }
 
-    @Override public synchronized void close() throws IOException {
+    @Override
+    public synchronized void close() throws IOException {
       if (closed) return;
       closed = true;
-      try { writer.close(); } finally { directory.decRef(); }
+      IOUtils.close(writer, (Closeable) directory::decRef);
     }
   }
 }
