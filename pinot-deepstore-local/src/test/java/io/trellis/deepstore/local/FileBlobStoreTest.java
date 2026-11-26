@@ -166,33 +166,43 @@ class FileBlobStoreTest {
     var store = new FileBlobStore(root);
     var staged = new java.util.concurrent.CountDownLatch(1);
     var release = new java.util.concurrent.CountDownLatch(1);
-    InputStream input = new InputStream() {
-      boolean sent;
-      @Override public int read() { throw new UnsupportedOperationException(); }
-      @Override public int read(byte[] b, int off, int len) throws IOException {
-        if (!sent) {
-          System.arraycopy(ABC, 0, b, off, ABC.length);
-          sent = true;
-          return ABC.length;
-        }
-        staged.countDown();
-        try {
-          if (!release.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new IOException("timeout");
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-          throw new IOException(e);
-        }
-        return -1;
-      }
-    };
+    InputStream input =
+        new InputStream() {
+          boolean sent;
+
+          @Override
+          public int read() {
+            throw new UnsupportedOperationException();
+          }
+
+          @Override
+          public int read(byte[] b, int off, int len) throws IOException {
+            if (!sent) {
+              System.arraycopy(ABC, 0, b, off, ABC.length);
+              sent = true;
+              return ABC.length;
+            }
+            staged.countDown();
+            try {
+              if (!release.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                throw new IOException("timeout");
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+              throw new IOException(e);
+            }
+            return -1;
+          }
+        };
     var executor = Executors.newSingleThreadExecutor();
     try {
       var future = executor.submit(() -> store.put(input, 3));
       assertThat(staged.await(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
-      assertThatThrownBy(() -> store.copyTo(new BlobStore.Key(ABC_HASH), new ByteArrayOutputStream()))
+      assertThatThrownBy(
+              () -> store.copyTo(new BlobStore.Key(ABC_HASH), new ByteArrayOutputStream()))
           .isInstanceOf(java.nio.file.NoSuchFileException.class);
       release.countDown();
-      assertThat(future.get(10, java.util.concurrent.TimeUnit.SECONDS).key().sha256()).isEqualTo(ABC_HASH);
+      assertThat(future.get(10, java.util.concurrent.TimeUnit.SECONDS).key().sha256())
+          .isEqualTo(ABC_HASH);
       assertThat(names()).containsExactly(ABC_HASH + ".blob");
     } finally {
       release.countDown();
@@ -204,10 +214,16 @@ class FileBlobStoreTest {
   void destinationFailureIsPropagated() throws Exception {
     var store = new FileBlobStore(root);
     var key = store.put(new ByteArrayInputStream(ABC), 3).key();
-    var broken = new java.io.OutputStream() {
-      @Override public void write(int value) throws IOException { throw new IOException("sink failed"); }
-    };
-    assertThatThrownBy(() -> store.copyTo(key, broken)).isInstanceOf(IOException.class).hasMessageContaining("sink failed");
+    var broken =
+        new java.io.OutputStream() {
+          @Override
+          public void write(int value) throws IOException {
+            throw new IOException("sink failed");
+          }
+        };
+    assertThatThrownBy(() -> store.copyTo(key, broken))
+        .isInstanceOf(IOException.class)
+        .hasMessageContaining("sink failed");
     assertThat(names()).containsExactly(ABC_HASH + ".blob");
   }
 
