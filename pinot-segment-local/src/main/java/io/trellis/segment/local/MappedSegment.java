@@ -15,6 +15,7 @@ package io.trellis.segment.local;
 
 import io.trellis.segment.spi.ImmutableSegment;
 import io.trellis.spi.Schema;
+import java.io.Closeable;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -23,6 +24,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.MultiDocValues;
 import org.apache.lucene.index.NumericDocValues;
@@ -32,14 +34,20 @@ import org.apache.lucene.util.IOUtils;
 
 /** Each operation obtains its own DocValues iterator; concurrent reads are supported. */
 final class MappedSegment implements ImmutableSegment {
-  private final MMapDirectory directory;
+  private final Closeable release;
+  private final AtomicBoolean closed = new AtomicBoolean();
   private final DirectoryReader reader;
   private final Schema schema;
 
-  private MappedSegment(MMapDirectory directory, DirectoryReader reader, Schema schema) {
-    this.directory = directory;
+  private MappedSegment(Closeable release, DirectoryReader reader, Schema schema) {
+    this.release = release;
     this.reader = reader;
     this.schema = schema;
+  }
+
+  /** Reader and release are owned by the returned snapshot. */
+  static MappedSegment fromReader(DirectoryReader reader, Schema schema, Closeable release) {
+    return new MappedSegment(release, reader, schema);
   }
 
   static MappedSegment open(Path path) throws IOException {
@@ -166,6 +174,6 @@ final class MappedSegment implements ImmutableSegment {
 
   @Override
   public void close() throws IOException {
-    IOUtils.close(reader, directory);
+    if (closed.compareAndSet(false, true)) IOUtils.close(reader, release);
   }
 }

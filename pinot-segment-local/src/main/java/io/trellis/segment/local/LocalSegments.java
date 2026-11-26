@@ -52,28 +52,37 @@ public final class LocalSegments {
         IndexWriter writer =
             new IndexWriter(directory, new IndexWriterConfig().setCommitOnClose(false))) {
       for (GenericRow row : rows) {
-        Objects.requireNonNull(row, "row");
-        Map<String, Object> values = row.values();
-        if (values.size() != schema.fields().size())
-          throw new IllegalArgumentException("row fields do not match schema");
-        Document doc = new Document();
-        for (Schema.Field field : schema.fields()) {
-          Object value = values.get(field.name());
-          if (field.type() == Schema.DataType.STRING && value instanceof String string) {
-            validateString(string);
-            doc.add(new SortedDocValuesField(field.name(), new BytesRef(string)));
-          } else if (field.type() == Schema.DataType.LONG && value instanceof Long number) {
-            doc.add(new NumericDocValuesField(field.name(), number));
-          } else {
-            throw new IllegalArgumentException(
-                "missing or invalid value for column: " + field.name());
-          }
-        }
+        Document doc = document(schema, row);
         writer.addDocument(doc);
       }
       writer.setLiveCommitData(metadata(schema).entrySet());
       writer.commit();
     }
+  }
+
+  /** Converts and validates the entire row before it reaches a writer. */
+  static Document document(Schema schema, GenericRow row) {
+    Objects.requireNonNull(row, "row");
+    Map<String, Object> values = row.values();
+    if (values.size() != schema.fields().size())
+      throw new IllegalArgumentException("row fields do not match schema");
+    Document doc = new Document();
+    for (Schema.Field field : schema.fields()) {
+      Object value = values.get(field.name());
+      if (field.type() == Schema.DataType.STRING && value instanceof String string) {
+        validateString(string);
+        BytesRef bytes = new BytesRef(string);
+        if (bytes.length > IndexWriter.MAX_TERM_LENGTH)
+          throw new IllegalArgumentException(
+              "string exceeds Lucene doc-values limit: " + field.name());
+        doc.add(new SortedDocValuesField(field.name(), bytes));
+      } else if (field.type() == Schema.DataType.LONG && value instanceof Long number) {
+        doc.add(new NumericDocValuesField(field.name(), number));
+      } else {
+        throw new IllegalArgumentException("missing or invalid value for column: " + field.name());
+      }
+    }
+    return doc;
   }
 
   /** Opens a committed segment backed by Lucene memory-mapped files. */
