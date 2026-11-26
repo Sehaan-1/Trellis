@@ -16,6 +16,7 @@ package io.trellis.controller;
 import io.trellis.common.ZooKeeperMetadataStore;
 import io.trellis.spi.Schema;
 import io.trellis.spi.TableConfig;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
@@ -45,7 +46,7 @@ public final class MetadataResource {
   public record TableBody(String tableName, String schemaName, String type) {}
   public record ErrorBody(String error) {}
   private final ZooKeeperMetadataStore store;
-  public MetadataResource(ZooKeeperMetadataStore store) { this.store = Objects.requireNonNull(store, "store"); }
+  @Inject public MetadataResource(ZooKeeperMetadataStore store) { this.store = Objects.requireNonNull(store, "store"); }
 
   private static String name(String s) {
     if (s == null || !s.matches("[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}")) throw new IllegalArgumentException("invalid resource name");

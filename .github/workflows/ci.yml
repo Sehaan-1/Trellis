@@ -39,10 +39,7 @@ jobs:
         run: ./mvnw -B -ntp -pl pinot-core -am verify
       - name: Controller tests
         run: |
-          ./mvnw -B -ntp -pl pinot-controller -am -Dtest=MetadataHttpServerTest#schemasSupportOptimisticCrudOverRealHttp -Dsurefire.failIfNoSpecifiedTests=false test > /tmp/test.log 2>&1 || {
-            sed -n '/Running io.trellis.controller.MetadataHttpServerTest/,$p' /tmp/test.log | gzip -c | base64 -w0 | fold -w 3000 | awk 'NR <= 8 { print "::notice::LOG" NR "=" $0 }'
-            exit 1
-          }
+          ./mvnw -B -ntp -pl pinot-controller -am verify > /tmp/test.log 2>&1 || { grep -E "ERROR|FAILURE|Caused by" /tmp/test.log | tail -8 | while IFS= read -r line; do echo "::error::$line"; done; exit 1; }
       - name: Full build and quality checks
         run: ./mvnw -B -ntp verify
       - name: Fast development profile
