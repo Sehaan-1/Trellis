@@ -39,7 +39,7 @@ jobs:
         run: ./mvnw -B -ntp -pl pinot-core -am verify
       - name: Controller tests
         run: |
-          ./mvnw -B -ntp -pl pinot-controller -am verify > /tmp/test.log 2>&1 || { grep -E "expected:|but was:|MetadataHttpServerTest\.[a-zA-Z]+\(" pinot-controller/target/surefire-reports/*.txt | head -8 | while IFS= read -r line; do echo "::error::$line"; done; grep -E "ERROR|FAILURE|Caused by" /tmp/test.log | tail -4 | while IFS= read -r line; do echo "::error::$line"; done; exit 1; }
+          ./mvnw -B -ntp -pl pinot-controller -am verify > /tmp/test.log 2>&1 || { grep -E "Response:|expected:|but was:|MetadataHttpServerTest\.[a-zA-Z]+\(" pinot-controller/target/surefire-reports/*.txt | head -8 | while IFS= read -r line; do echo "::error::$line"; done; grep -E "ERROR|FAILURE|Caused by" /tmp/test.log | tail -4 | while IFS= read -r line; do echo "::error::$line"; done; exit 1; }
       - name: Full build and quality checks
         run: ./mvnw -B -ntp verify
       - name: Fast development profile

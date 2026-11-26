@@ -88,7 +88,7 @@ public final class MetadataResource {
     catch (KeeperException.NoNodeException e) { return Response.status(404).entity(new ErrorBody("not found")).build(); }
     catch (InterruptedException e) { Thread.currentThread().interrupt(); return Response.status(503).entity(new ErrorBody("metadata unavailable; write outcome may be unknown")).build(); }
     catch (KeeperException e) { return Response.status(503).entity(new ErrorBody("metadata unavailable; write outcome may be unknown")).build(); }
-    catch (Exception e) { return Response.serverError().entity(new ErrorBody("metadata operation failed; write outcome may be unknown")).build(); }
+    catch (Exception e) { return Response.serverError().entity(new ErrorBody("metadata operation failed: " + e.getClass().getName() + ": " + e.getMessage())).build(); }
   }
 
   @POST @Path("schemas") public Response createSchema(SchemaBody request, @Context UriInfo uri) {

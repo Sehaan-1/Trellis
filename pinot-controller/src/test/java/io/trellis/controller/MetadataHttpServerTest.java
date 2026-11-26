@@ -62,7 +62,7 @@ class MetadataHttpServerTest {
 
   @Test void schemasSupportOptimisticCrudOverRealHttp() throws Exception {
     var created = call("POST", "/schemas", SCHEMA, null);
-    assertThat(created.statusCode()).isEqualTo(201);
+    assertThat(created.statusCode()).as("Response: %s", created.body()).isEqualTo(201);
     assertThat(etag(created)).isEqualTo("\"0\"");
     assertThat(created.headers().firstValue("Location")).hasValueSatisfying(location -> assertThat(location).endsWith("/schemas/events"));
     assertThat(call("POST", "/schemas", SCHEMA, null).statusCode()).isEqualTo(409);
