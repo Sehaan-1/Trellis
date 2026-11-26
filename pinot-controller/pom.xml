@@ -20,6 +20,8 @@ limitations under the License.
   <dependencyManagement><dependencies><dependency><groupId>io.trellis</groupId><artifactId>pinot-bom</artifactId><version>${project.version}</version><type>pom</type><scope>import</scope></dependency></dependencies></dependencyManagement>
   <dependencies>
     <dependency><groupId>io.trellis</groupId><artifactId>pinot-common</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>org.apache.helix</groupId><artifactId>helix-core</artifactId></dependency>
+    <dependency><groupId>org.awaitility</groupId><artifactId>awaitility</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.glassfish.jersey.containers</groupId><artifactId>jersey-container-jetty11-http</artifactId></dependency>
     <dependency><groupId>org.glassfish.jersey.inject</groupId><artifactId>jersey-hk2</artifactId></dependency>
     <dependency><groupId>org.glassfish.jersey.media</groupId><artifactId>jersey-media-json-jackson</artifactId></dependency>

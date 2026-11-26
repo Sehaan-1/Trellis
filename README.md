@@ -62,3 +62,7 @@ Run `./mvnw -pl pinot-common -am verify` for these contracts and embedded ZooKee
 **Security:** this service has no authentication, authorization or TLS. Bind it to a trusted interface and place it behind an authenticated TLS proxy before use; configure ZooKeeper authentication and ACLs separately. ETags are ZooKeeper versions and do **not** prevent stale updates after a delete/recreate (ABA); coordinate name reuse. A failed network write may have an uncertain outcome. This is not yet a Helix cluster controller and does not upload segments.
 
 Run `./mvnw -pl pinot-controller -am verify` for controller and prerequisite tests.
+
+## Helix controller lifecycle
+
+`HelixController.start` connects a fresh caller-configured Helix CONTROLLER manager to a previously provisioned cluster and owns its connection until close. Helix handles leader election and failover. `isLeader()` and `isConnected()` are observations, not fencing tokens; do not use a prior observation to authorize later writes. Cluster provisioning and ZooKeeper authentication/ACL configuration remain the caller’s responsibility. The metadata HTTP API is independent and is **not** restricted to the Helix leader. Resource assignment, segment upload and a runnable integrated controller are not yet implemented.

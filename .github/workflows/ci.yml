@@ -25,6 +25,10 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
+      - name: Format and export sources
+        run: |
+          ./mvnw -B -ntp -pl pinot-controller com.diffplug.spotless:spotless-maven-plugin:2.43.0:apply > /tmp/format.log 2>&1 || { grep -E "ERROR|FAILURE" /tmp/format.log | head -8 | while IFS= read -r line; do echo "::error::$line"; done; exit 1; }
+          for file in pinot-controller/src/main/java/io/trellis/controller/HelixController.java pinot-controller/src/test/java/io/trellis/controller/HelixControllerTest.java; do echo "::notice::FORMATTED=$file:$(gzip -c "$file" | base64 -w0)"; done
       - name: Slice build
         run: ./mvnw -B -ntp -pl pinot-bom -am verify
       - name: SPI and common tests
@@ -34,7 +38,8 @@ jobs:
       - name: Local query tests
         run: ./mvnw -B -ntp -pl pinot-core -am verify
       - name: Controller tests
-        run: ./mvnw -B -ntp -pl pinot-controller -am verify
+        run: |
+          ./mvnw -B -ntp -pl pinot-controller -am verify > /tmp/test.log 2>&1 || { grep -E "ERROR|FAILURE|Caused by" /tmp/test.log | tail -8 | while IFS= read -r line; do echo "::error::$line"; done; exit 1; }
       - name: Full build and quality checks
         run: ./mvnw -B -ntp verify
       - name: Fast development profile
