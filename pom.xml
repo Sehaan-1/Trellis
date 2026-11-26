@@ -27,6 +27,7 @@ limitations under the License.
     <module>pinot-segment-spi</module>
     <module>pinot-segment-local</module>
     <module>pinot-core</module>
+    <module>pinot-controller</module>
   </modules>
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
