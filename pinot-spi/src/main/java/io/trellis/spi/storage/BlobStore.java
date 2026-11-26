@@ -18,14 +18,18 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Objects;
 
-/** Immutable, SHA-256-addressed opaque blob storage. Implementations must support concurrent calls. */
+/**
+ * Immutable, SHA-256-addressed opaque blob storage. Implementations must support concurrent calls.
+ */
 public interface BlobStore {
   record Key(String sha256) {
     public Key {
       Objects.requireNonNull(sha256, "sha256");
-      if (!sha256.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("key must be a lowercase SHA-256 hex digest");
+      if (!sha256.matches("[0-9a-f]{64}"))
+        throw new IllegalArgumentException("key must be a lowercase SHA-256 hex digest");
     }
   }
+
   record StoredBlob(Key key, long size) {
     public StoredBlob {
       Objects.requireNonNull(key, "key");
@@ -34,9 +38,9 @@ public interface BlobStore {
   }
 
   /**
-   * Streams and publishes a complete blob, rejecting inputs larger than maxBytes. Existing
-   * content is never overwritten. The caller retains ownership of source. A failure may have an
-   * uncertain outcome; a retry of identical bytes is safe, provided the existing object is intact.
+   * Streams and publishes a complete blob, rejecting inputs larger than maxBytes. Existing content
+   * is never overwritten. The caller retains ownership of source. A failure may have an uncertain
+   * outcome; a retry of identical bytes is safe, provided the existing object is intact.
    */
   StoredBlob put(InputStream source, long maxBytes) throws IOException;
 

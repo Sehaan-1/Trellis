@@ -38,11 +38,13 @@ public final class FileBlobStore implements BlobStore {
   /** The existing root and its parents must be trusted, with no concurrent out-of-band writers. */
   public FileBlobStore(Path root) throws IOException {
     Objects.requireNonNull(root, "root");
-    if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) throw new IOException("blob root must be an existing non-symlink directory");
+    if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS))
+      throw new IOException("blob root must be an existing non-symlink directory");
     this.root = root.toRealPath();
   }
 
-  @Override public StoredBlob put(InputStream source, long maxBytes) throws IOException {
+  @Override
+  public StoredBlob put(InputStream source, long maxBytes) throws IOException {
     Objects.requireNonNull(source, "source");
     if (maxBytes < 0) throw new IllegalArgumentException("maxBytes must be nonnegative");
     try (StagedFile temp = new StagedFile(Files.createTempFile(root, ".upload-", ".tmp"))) {
@@ -75,20 +77,26 @@ public final class FileBlobStore implements BlobStore {
     }
   }
 
-  @Override public long copyTo(Key key, OutputStream destination) throws IOException {
+  @Override
+  public long copyTo(Key key, OutputStream destination) throws IOException {
     Objects.requireNonNull(key, "key");
     Objects.requireNonNull(destination, "destination");
     return verifyAndCopy(key, destination);
   }
 
-  private Path path(Key key) { return root.resolve(key.sha256() + ".blob"); }
+  private Path path(Key key) {
+    return root.resolve(key.sha256() + ".blob");
+  }
+
   private long verifyAndCopy(Key key, OutputStream destination) throws IOException {
     Path path = path(key);
-    BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+    BasicFileAttributes attributes =
+        Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
     if (!attributes.isRegularFile()) throw new IOException("blob path is not a regular file");
     MessageDigest digest = digest();
     long size = 0;
-    try (InputStream input = Files.newInputStream(path, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
+    try (InputStream input =
+        Files.newInputStream(path, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
       byte[] buffer = new byte[65536];
       int count;
       while ((count = input.read(buffer)) != -1) {
@@ -98,16 +106,29 @@ public final class FileBlobStore implements BlobStore {
         size += count;
       }
     }
-    if (!key.sha256().equals(HexFormat.of().formatHex(digest.digest()))) throw new IOException("blob checksum mismatch");
+    if (!key.sha256().equals(HexFormat.of().formatHex(digest.digest())))
+      throw new IOException("blob checksum mismatch");
     return size;
   }
+
   private static final class StagedFile implements Closeable {
     final Path path;
-    StagedFile(Path path) { this.path = path; }
-    @Override public void close() throws IOException { Files.deleteIfExists(path); }
+
+    StagedFile(Path path) {
+      this.path = path;
+    }
+
+    @Override
+    public void close() throws IOException {
+      Files.deleteIfExists(path);
+    }
   }
+
   private static MessageDigest digest() {
-    try { return MessageDigest.getInstance("SHA-256"); }
-    catch (NoSuchAlgorithmException e) { throw new IllegalStateException("SHA-256 is unavailable", e); }
+    try {
+      return MessageDigest.getInstance("SHA-256");
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException("SHA-256 is unavailable", e);
+    }
   }
 }
