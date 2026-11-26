@@ -68,7 +68,8 @@ class SegmentValidationTest {
   @Test
   void openingMissingPathDoesNotCreateIt() {
     Path path = temp.resolve("absent");
-    assertThatThrownBy(() -> LocalSegments.open(path)).isInstanceOf(java.nio.file.NoSuchFileException.class);
+    assertThatThrownBy(() -> LocalSegments.open(path))
+        .isInstanceOf(java.nio.file.NoSuchFileException.class);
     assertThat(Files.exists(path)).isFalse();
   }
 
