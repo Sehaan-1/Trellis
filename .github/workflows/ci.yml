@@ -29,6 +29,8 @@ jobs:
         run: ./mvnw -B -ntp -pl pinot-bom -am verify
       - name: SPI and common tests
         run: ./mvnw -B -ntp -pl pinot-common -am verify
+      - name: Segment tests
+        run: ./mvnw -B -ntp -pl pinot-segment-local -am verify
       - name: Full build and quality checks
         run: ./mvnw -B -ntp verify
       - name: Fast development profile
