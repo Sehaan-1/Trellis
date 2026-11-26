@@ -27,9 +27,21 @@ public final class GenericRow {
     values.put(name, value);
     return this;
   }
-  public Object get(String name) { return values.get(Objects.requireNonNull(name, "name")); }
-  public boolean contains(String name) { return values.containsKey(Objects.requireNonNull(name, "name")); }
+
+  public Object get(String name) {
+    return values.get(Objects.requireNonNull(name, "name"));
+  }
+
+  public boolean contains(String name) {
+    return values.containsKey(Objects.requireNonNull(name, "name"));
+  }
+
   /** Returns an unmodifiable shallow snapshot, not a live view. */
-  public Map<String, Object> values() { return Collections.unmodifiableMap(new LinkedHashMap<>(values)); }
-  public void clear() { values.clear(); }
+  public Map<String, Object> values() {
+    return Collections.unmodifiableMap(new LinkedHashMap<>(values));
+  }
+
+  public void clear() {
+    values.clear();
+  }
 }

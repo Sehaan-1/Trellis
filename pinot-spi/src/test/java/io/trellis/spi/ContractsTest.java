@@ -20,7 +20,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class ContractsTest {
-  @Test void schemaValidatesAndCopiesFields() {
+  @Test
+  void schemaValidatesAndCopiesFields() {
     var field = new Schema.Field("score", Schema.DataType.INT, false);
     var input = new ArrayList<>(List.of(field));
     var schema = new Schema("baseball", input);
@@ -29,21 +30,30 @@ class ContractsTest {
     assertThat(schema.fields()).containsExactly(field);
     assertThat(schema.field("score")).contains(field);
     assertThat(schema.field("SCORE")).isEmpty();
-    assertThatThrownBy(() -> schema.fields().clear()).isInstanceOf(UnsupportedOperationException.class);
-    assertThatThrownBy(() -> new Schema("s", List.of(field, field))).isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new Schema("s", List.of())).isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new Schema.Field(" ", Schema.DataType.STRING, false)).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> schema.fields().clear())
+        .isInstanceOf(UnsupportedOperationException.class);
+    assertThatThrownBy(() -> new Schema("s", List.of(field, field)))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new Schema("s", List.of()))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new Schema.Field(" ", Schema.DataType.STRING, false))
+        .isInstanceOf(IllegalArgumentException.class);
     assertThatNullPointerException().isThrownBy(() -> new Schema.Field("x", null, false));
   }
-  @Test void tableIdentityValidates() {
+
+  @Test
+  void tableIdentityValidates() {
     var config = new TableConfig("events", "eventSchema", TableConfig.TableType.REALTIME);
     assertThat(config.tableName()).isEqualTo("events");
     assertThat(config.schemaName()).isEqualTo("eventSchema");
     assertThat(config.type()).isEqualTo(TableConfig.TableType.REALTIME);
-    assertThatThrownBy(() -> new TableConfig("", "s", TableConfig.TableType.OFFLINE)).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new TableConfig("", "s", TableConfig.TableType.OFFLINE))
+        .isInstanceOf(IllegalArgumentException.class);
     assertThatNullPointerException().isThrownBy(() -> new TableConfig("t", "s", null));
   }
-  @Test void rowDistinguishesNullAndMissingAndSnapshots() {
+
+  @Test
+  void rowDistinguishesNullAndMissingAndSnapshots() {
     var row = new GenericRow().put("a", null);
     var snapshot = row.values();
     row.put("a", 1).put("b", "hello");
@@ -56,8 +66,7 @@ class ContractsTest {
     assertThat(row.get("a")).isNull();
     assertThatThrownBy(() -> row.put(" ", 1)).isInstanceOf(IllegalArgumentException.class);
   }
-  @Test void decoderContractCanBeImplemented() {
-    RecordDecoder decoder = bytes -> new GenericRow().put("size", bytes.length);
-    assertThat(decoder.decode(new byte[]{1, 2}).get("size")).isEqualTo(2);
-  }
-}
+
+  @Test
+  void decoderContractCanBeImplemented() {
+    RecordDecoder de

@@ -22,13 +22,18 @@ import org.apache.helix.zookeeper.datamodel.ZNRecord;
 import org.junit.jupiter.api.Test;
 
 class CommonTest {
-  @Test void parsesQueriesAndRejectsInvalidSql() throws Exception {
-    assertThat(SqlQueries.parse("SELECT team, COUNT(*) FROM games GROUP BY team").getKind()).isEqualTo(SqlKind.SELECT);
+  @Test
+  void parsesQueriesAndRejectsInvalidSql() throws Exception {
+    assertThat(SqlQueries.parse("SELECT team, COUNT(*) FROM games GROUP BY team").getKind())
+        .isEqualTo(SqlKind.SELECT);
     assertThatThrownBy(() -> SqlQueries.parse("SELECT FROM")).isInstanceOf(SqlParseException.class);
-    assertThatThrownBy(() -> SqlQueries.parse("SELECT 1; SELECT 2")).isInstanceOf(SqlParseException.class);
+    assertThatThrownBy(() -> SqlQueries.parse("SELECT 1; SELECT 2"))
+        .isInstanceOf(SqlParseException.class);
     assertThatNullPointerException().isThrownBy(() -> SqlQueries.parse(null));
   }
-  @Test void helixRecordRoundTripAndInvalidRecords() {
+
+  @Test
+  void helixRecordRoundTripAndInvalidRecords() {
     for (var type : TableConfig.TableType.values()) {
       var config = new TableConfig("events", "eventSchema", type);
       var record = TableConfigRecord.encode(config);
@@ -36,10 +41,12 @@ class CommonTest {
       assertThat(TableConfigRecord.decode(record)).isEqualTo(config);
     }
     var missing = new ZNRecord("events");
-    assertThatThrownBy(() -> TableConfigRecord.decode(missing)).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> TableConfigRecord.decode(missing))
+        .isInstanceOf(IllegalArgumentException.class);
     missing.setSimpleField("schemaName", "s");
     missing.setSimpleField("tableType", "OTHER");
-    assertThatThrownBy(() -> TableConfigRecord.decode(missing)).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> TableConfigRecord.decode(missing))
+        .isInstanceOf(IllegalArgumentException.class);
     assertThatNullPointerException().isThrownBy(() -> TableConfigRecord.encode(null));
     assertThatNullPointerException().isThrownBy(() -> TableConfigRecord.decode(null));
   }

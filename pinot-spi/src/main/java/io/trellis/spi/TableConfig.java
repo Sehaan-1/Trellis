@@ -17,7 +17,11 @@ import java.util.Objects;
 
 /** Minimal immutable table identity. Names are logical, not Helix resource names. */
 public record TableConfig(String tableName, String schemaName, TableType type) {
-  public enum TableType { OFFLINE, REALTIME }
+  public enum TableType {
+    OFFLINE,
+    REALTIME
+  }
+
   public TableConfig {
     Schema.requireName(tableName);
     Schema.requireName(schemaName);

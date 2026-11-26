@@ -21,6 +21,7 @@ import org.apache.helix.zookeeper.datamodel.ZNRecord;
 public final class TableConfigRecord {
   private static final String SCHEMA = "schemaName";
   private static final String TYPE = "tableType";
+
   private TableConfigRecord() {}
 
   public static ZNRecord encode(TableConfig config) {
@@ -36,7 +37,8 @@ public final class TableConfigRecord {
     Objects.requireNonNull(record, "record");
     String schema = record.getSimpleField(SCHEMA);
     String type = record.getSimpleField(TYPE);
-    if (schema == null || type == null) throw new IllegalArgumentException("missing table metadata");
+    if (schema == null || type == null)
+      throw new IllegalArgumentException("missing table metadata");
     return new TableConfig(record.getId(), schema, TableConfig.TableType.valueOf(type));
   }
 }

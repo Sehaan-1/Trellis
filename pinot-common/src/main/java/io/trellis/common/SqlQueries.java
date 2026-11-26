@@ -18,7 +18,9 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParseException;
 import org.apache.calcite.sql.parser.SqlParser;
 
-/** Calcite parser adapter. Parsing is syntactic only: it does not validate names or plan queries. */
+/**
+ * Calcite parser adapter. Parsing is syntactic only: it does not validate names or plan queries.
+ */
 public final class SqlQueries {
   private SqlQueries() {}
 

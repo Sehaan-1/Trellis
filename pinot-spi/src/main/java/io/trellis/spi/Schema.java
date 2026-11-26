@@ -21,7 +21,17 @@ import java.util.Optional;
 
 /** Immutable ordered schema. Field names are case sensitive. */
 public final class Schema {
-  public enum DataType { INT, LONG, FLOAT, DOUBLE, BOOLEAN, STRING, BYTES, TIMESTAMP }
+  public enum DataType {
+    INT,
+    LONG,
+    FLOAT,
+    DOUBLE,
+    BOOLEAN,
+    STRING,
+    BYTES,
+    TIMESTAMP
+  }
+
   public record Field(String name, DataType type, boolean multiValue) {
     public Field {
       requireName(name);
@@ -36,19 +46,29 @@ public final class Schema {
   public Schema(String name, List<Field> fields) {
     this.name = requireName(name);
     Objects.requireNonNull(fields, "fields");
-    if (fields.isEmpty()) throw new IllegalArgumentException("schema must contain at least one field");
+    if (fields.isEmpty())
+      throw new IllegalArgumentException("schema must contain at least one field");
     Map<String, Field> index = new LinkedHashMap<>();
     for (Field field : fields) {
       Objects.requireNonNull(field, "field");
-      if (index.putIfAbsent(field.name(), field) != null) throw new IllegalArgumentException("duplicate field: " + field.name());
+      if (index.putIfAbsent(field.name(), field) != null)
+        throw new IllegalArgumentException("duplicate field: " + field.name());
     }
     this.fields = List.copyOf(fields);
     this.byName = Map.copyOf(index);
   }
 
-  public String name() { return name; }
-  public List<Field> fields() { return fields; }
-  public Optional<Field> field(String name) { return Optional.ofNullable(byName.get(Objects.requireNonNull(name, "name"))); }
+  public String name() {
+    return name;
+  }
+
+  public List<Field> fields() {
+    return fields;
+  }
+
+  public Optional<Field> field(String name) {
+    return Optional.ofNullable(byName.get(Objects.requireNonNull(name, "name")));
+  }
 
   static String requireName(String name) {
     Objects.requireNonNull(name, "name");
