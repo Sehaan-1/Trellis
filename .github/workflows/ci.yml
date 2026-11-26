@@ -27,9 +27,7 @@ jobs:
           cache: maven
       - name: Format sources
         run: |
-          curl -v -o /dev/null https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.9/apache-maven-3.9.9-bin.zip > curl.log 2>&1 || true
-          tail -25 curl.log | while IFS= read -r line; do echo "::warning::$line"; done
-          ./mvnw -B -ntp spotless:apply > build.log 2>&1 || { tail -40 build.log | while IFS= read -r line; do echo "::error::$line"; done; exit 1; }
+          ./mvnw -B -ntp spotless:apply > build.log 2>&1 || { grep -E "ERROR|FAILURE|Caused by" build.log | tail -8 | while IFS= read -r line; do echo "::error::$line"; done; exit 1; }
       - name: Upload formatted sources
         uses: actions/upload-artifact@v4
         with:
