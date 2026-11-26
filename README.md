@@ -48,3 +48,9 @@ Run `./mvnw -pl pinot-segment-local -am verify` for the affected modules.
 `pinot-core` provides `LocalQueryExecutor` for one logical table backed by one or more compatible immutable segment readers. Calcite validates, plans and executes SQL locally; the caller owns and must keep the readers open. Identifiers are case-sensitive. Results are materialized with a mandatory output-row cap that rejects overflow, but this cap does not bound intermediate memory or CPU. This API is not a network server, security boundary or distributed query engine; use trusted queries only.
 
 Run `./mvnw -pl pinot-core -am verify` for the affected reactor.
+
+## ZooKeeper metadata
+
+`ZooKeeperMetadataStore` in `pinot-common` stores schema and table metadata as versioned Helix records through a caller-owned Curator client. Configure authentication and ACLs on that client; Curator defaults are not a secure deployment configuration. Create, read, update and delete expose ZooKeeper errors and require explicit nonnegative versions for mutations. Versions reset after a znode is deleted and recreated, so they do not prevent stale updates across that ABA transition; clients must coordinate deletion/recreation. Network failures can leave write outcomes uncertain; reconcile state before retrying. Reads have ZooKeeper's normal consistency semantics and can lag other clients; version checks happen at the leader on mutation. Operations on different records are not transactional. The store does not enforce schema/table referential integrity or perform Helix cluster coordination.
+
+Run `./mvnw -pl pinot-common -am verify` for these contracts and embedded ZooKeeper integration tests.
