@@ -24,19 +24,33 @@ import org.junit.jupiter.api.io.TempDir;
 
 class BitmapIndexesTest {
   @TempDir Path temp;
-  private static final Schema SCHEMA = new Schema("s", List.of(new Schema.Field("name", Schema.DataType.STRING, false), new Schema.Field("n", Schema.DataType.LONG, false)));
-  private static GenericRow row(String value, long n) { return new GenericRow().put("name", value).put("n", n); }
+  private static final Schema SCHEMA =
+      new Schema(
+          "s",
+          List.of(
+              new Schema.Field("name", Schema.DataType.STRING, false),
+              new Schema.Field("n", Schema.DataType.LONG, false)));
 
-  @Test void bitmapEqualityRangeAndSnapshot() throws Exception {
+  private static GenericRow row(String value, long n) {
+    return new GenericRow().put("name", value).put("n", n);
+  }
+
+  @Test
+  void bitmapEqualityRangeAndSnapshot() throws Exception {
     Path path = temp.resolve("s");
-    LocalSegments.write(path, SCHEMA, List.of(row("a", Long.MIN_VALUE), row("b", 2), row("a", 5), row("c", Long.MAX_VALUE)));
+    LocalSegments.write(
+        path,
+        SCHEMA,
+        List.of(row("a", Long.MIN_VALUE), row("b", 2), row("a", 5), row("c", Long.MAX_VALUE)));
     io.trellis.segment.spi.BitmapIndexes.StringIndex strings;
     io.trellis.segment.spi.BitmapIndexes.LongIndex longs;
     try (var segment = LocalSegments.open(path)) {
       strings = RoaringIndexes.strings(segment, "name");
       longs = RoaringIndexes.longs(segment, "n");
-      assertThatThrownBy(() -> RoaringIndexes.strings(segment, "n")).isInstanceOf(IllegalArgumentException.class);
-      assertThatThrownBy(() -> RoaringIndexes.longs(segment, "nope")).isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(() -> RoaringIndexes.strings(segment, "n"))
+          .isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(() -> RoaringIndexes.longs(segment, "nope"))
+          .isInstanceOf(IllegalArgumentException.class);
     }
     int[] snapshot = strings.equalTo("a");
     assertThat(snapshot).containsExactly(0, 2);
@@ -52,13 +66,15 @@ class BitmapIndexesTest {
     assertThat(longs.between(Long.MAX_VALUE, Long.MAX_VALUE)).containsExactly(3);
   }
 
-  @Test void emptyIndexesValidateColumns() throws Exception {
+  @Test
+  void emptyIndexesValidateColumns() throws Exception {
     Path path = temp.resolve("empty");
     LocalSegments.write(path, SCHEMA, List.of());
     try (var segment = LocalSegments.open(path)) {
       assertThat(RoaringIndexes.longs(segment, "n").between(0, 1)).isEmpty();
       assertThat(RoaringIndexes.strings(segment, "name").equalTo("a")).isEmpty();
-      assertThatThrownBy(() -> RoaringIndexes.longs(segment, "name")).isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(() -> RoaringIndexes.longs(segment, "name"))
+          .isInstanceOf(IllegalArgumentException.class);
     }
   }
 }

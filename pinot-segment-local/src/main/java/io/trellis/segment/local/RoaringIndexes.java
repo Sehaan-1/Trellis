@@ -31,14 +31,21 @@ public final class RoaringIndexes {
   private static void requireColumn(ImmutableSegment segment, String column, Schema.DataType type) {
     Objects.requireNonNull(segment, "segment");
     Objects.requireNonNull(column, "column");
-    var field = segment.schema().field(column).orElseThrow(() -> new IllegalArgumentException("unknown column: " + column));
-    if (field.type() != type || field.multiValue()) throw new IllegalArgumentException("unsupported column: " + column);
+    var field =
+        segment
+            .schema()
+            .field(column)
+            .orElseThrow(() -> new IllegalArgumentException("unknown column: " + column));
+    if (field.type() != type || field.multiValue())
+      throw new IllegalArgumentException("unsupported column: " + column);
   }
 
-  public static BitmapIndexes.StringIndex strings(ImmutableSegment segment, String column) throws IOException {
+  public static BitmapIndexes.StringIndex strings(ImmutableSegment segment, String column)
+      throws IOException {
     requireColumn(segment, column, Schema.DataType.STRING);
     Map<String, RoaringBitmap> values = new HashMap<>();
-    for (int doc = 0; doc < segment.rowCount(); doc++) values.computeIfAbsent(segment.getString(doc, column), key -> new RoaringBitmap()).add(doc);
+    for (int doc = 0; doc < segment.rowCount(); doc++)
+      values.computeIfAbsent(segment.getString(doc, column), key -> new RoaringBitmap()).add(doc);
     return value -> {
       Objects.requireNonNull(value, "value");
       RoaringBitmap result = values.get(value);
@@ -46,19 +53,25 @@ public final class RoaringIndexes {
     };
   }
 
-  public static BitmapIndexes.LongIndex longs(ImmutableSegment segment, String column) throws IOException {
+  public static BitmapIndexes.LongIndex longs(ImmutableSegment segment, String column)
+      throws IOException {
     requireColumn(segment, column, Schema.DataType.LONG);
     NavigableMap<Long, RoaringBitmap> values = new TreeMap<>();
-    for (int doc = 0; doc < segment.rowCount(); doc++) values.computeIfAbsent(segment.getLong(doc, column), key -> new RoaringBitmap()).add(doc);
+    for (int doc = 0; doc < segment.rowCount(); doc++)
+      values.computeIfAbsent(segment.getLong(doc, column), key -> new RoaringBitmap()).add(doc);
     return new BitmapIndexes.LongIndex() {
-      @Override public int[] equalTo(long value) {
+      @Override
+      public int[] equalTo(long value) {
         RoaringBitmap result = values.get(value);
         return result == null ? new int[0] : result.toArray();
       }
-      @Override public int[] between(long lower, long upper) {
+
+      @Override
+      public int[] between(long lower, long upper) {
         if (lower > upper) return new int[0];
         RoaringBitmap result = new RoaringBitmap();
-        for (RoaringBitmap bitmap : values.subMap(lower, true, upper, true).values()) result.or(bitmap);
+        for (RoaringBitmap bitmap : values.subMap(lower, true, upper, true).values())
+          result.or(bitmap);
         return result.toArray();
       }
     };

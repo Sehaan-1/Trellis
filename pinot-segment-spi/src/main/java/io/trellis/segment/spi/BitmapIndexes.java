@@ -16,10 +16,15 @@ package io.trellis.segment.spi;
 /** In-memory bitmap query contracts. Returned document IDs are sorted, unique snapshots. */
 public final class BitmapIndexes {
   private BitmapIndexes() {}
+
   @FunctionalInterface
-  public interface StringIndex { int[] equalTo(String value); }
+  public interface StringIndex {
+    int[] equalTo(String value);
+  }
+
   public interface LongIndex {
     int[] equalTo(long value);
+
     /** Inclusive endpoints; an inverted interval yields no matches. */
     int[] between(long lower, long upper);
   }

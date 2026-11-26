@@ -19,15 +19,22 @@ import java.util.List;
 /** Search contracts return at most the requested limit in descending Lucene relevance score. */
 public final class SearchIndexes {
   private SearchIndexes() {}
+
   public record Hit(int documentId, float score) {}
+
   public interface TextIndex extends AutoCloseable {
     /** All tokens emitted by the analyzer must match. No tokens means no results. */
     List<Hit> search(String text, int limit) throws IOException;
-    @Override void close() throws IOException;
+
+    @Override
+    void close() throws IOException;
   }
+
   public interface VectorIndex extends AutoCloseable {
     /** Approximate nearest neighbors under Lucene's Euclidean similarity. */
     List<Hit> nearest(float[] vector, int limit) throws IOException;
-    @Override void close() throws IOException;
+
+    @Override
+    void close() throws IOException;
   }
 }
