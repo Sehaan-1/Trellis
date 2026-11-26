@@ -17,7 +17,7 @@ A staged, Pinot-inspired OLAP system. This repository contains a build scaffold 
 
 ## Build
 
-Install JDK 17 or newer and run `./mvnw verify` (on Windows, `mvnw.cmd verify`). The wrapper downloads Maven 3.9.9 from Maven Central; dependencies and plugins also require Maven Central access. Run `./mvnw -pl pinot-bom -am verify` for this slice. `./mvnw -Pfast-dev verify` skips formatting and license checks, but not tests; use the default profile before merging. Apply Java formatting with `./mvnw -pl pinot-spi,pinot-common,pinot-segment-spi,pinot-segment-local,pinot-core com.diffplug.spotless:spotless-maven-plugin:2.43.0:apply`.
+Install JDK 17 or newer and run `./mvnw verify` (on Windows, `mvnw.cmd verify`). The wrapper downloads Maven 3.9.9 from Maven Central; dependencies and plugins also require Maven Central access. Run `./mvnw -pl pinot-bom -am verify` for this slice. `./mvnw -Pfast-dev verify` skips formatting and license checks, but not tests; use the default profile before merging. Apply Java formatting with `./mvnw -pl pinot-spi,pinot-common,pinot-segment-spi,pinot-segment-local,pinot-core,pinot-controller com.diffplug.spotless:spotless-maven-plugin:2.43.0:apply`.
 
 The root is an aggregator and parent for future modules. The standalone `io.trellis:pinot-bom:0.1.0-SNAPSHOT` contains centrally managed dependency versions; future consumers must explicitly import it in `dependencyManagement`. It is not imported by the root, avoiding a reactor model cycle. The BOM lists candidate versions, not runtime dependencies or a promise of adoption; each future slice must review and verify the dependencies it uses. CI checks the reactor on Java 17.
 
@@ -54,3 +54,11 @@ Run `./mvnw -pl pinot-core -am verify` for the affected reactor.
 `ZooKeeperMetadataStore` in `pinot-common` stores schema and table metadata as versioned Helix records through a caller-owned Curator client. Configure authentication and ACLs on that client; Curator defaults are not a secure deployment configuration. Create, read, update and delete expose ZooKeeper errors and require explicit nonnegative versions for mutations. Versions reset after a znode is deleted and recreated, so they do not prevent stale updates across that ABA transition; clients must coordinate deletion/recreation. Network failures can leave write outcomes uncertain; reconcile state before retrying. Reads have ZooKeeper's normal consistency semantics and can lag other clients; version checks happen at the leader on mutation. Operations on different records are not transactional. The store does not enforce schema/table referential integrity or perform Helix cluster coordination.
 
 Run `./mvnw -pl pinot-common -am verify` for these contracts and embedded ZooKeeper integration tests.
+
+## Controller metadata HTTP API (initial slice)
+
+`MetadataHttpServer` exposes schema CRUD at `/schemas` and `/schemas/{name}`, and table CRUD at `/tables` and `/tables/{OFFLINE|REALTIME}/{name}`. POST creates, GET returns an ETag, and PUT/DELETE require that strong numeric ETag in `If-Match`. Names are 1–128 ASCII letters, digits, underscores, hyphens or dots and must start with a letter, digit or underscore. Body fields and table types use the SPI enum names. There is no schema/table referential-integrity check.
+
+**Security:** this service has no authentication, authorization or TLS. Bind it to a trusted interface and place it behind an authenticated TLS proxy before use; configure ZooKeeper authentication and ACLs separately. ETags are ZooKeeper versions and do **not** prevent stale updates after a delete/recreate (ABA); coordinate name reuse. A failed network write may have an uncertain outcome. This is not yet a Helix cluster controller and does not upload segments.
+
+Run `./mvnw -pl pinot-controller -am verify` for controller and prerequisite tests.
