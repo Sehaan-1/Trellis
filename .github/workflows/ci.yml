@@ -27,7 +27,7 @@ jobs:
           cache: maven
       - name: Format sources
         run: |
-          ./mvnw -B -ntp com.diffplug.spotless:spotless-maven-plugin:2.43.0:apply > build.log 2>&1 || { grep -E "ERROR|FAILURE|Caused by" build.log | tail -8 | while IFS= read -r line; do echo "::error::$line"; done; exit 1; }
+          ./mvnw -B -ntp -pl pinot-spi,pinot-common com.diffplug.spotless:spotless-maven-plugin:2.43.0:apply > build.log 2>&1 || { grep -E "ERROR|FAILURE|Caused by" build.log | tail -8 | while IFS= read -r line; do echo "::error::$line"; done; exit 1; }
       - name: Upload formatted sources
         uses: actions/upload-artifact@v4
         with:
