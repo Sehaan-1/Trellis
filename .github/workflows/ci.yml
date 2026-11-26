@@ -25,6 +25,15 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
+      - name: Format sources
+        run: ./mvnw -B -ntp spotless:apply
+      - name: Upload formatted sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: formatted-sources
+          path: |
+            pinot-spi/src
+            pinot-common/src
       - name: Slice build
         run: ./mvnw -B -ntp -pl pinot-bom -am verify
       - name: Full build and quality checks

@@ -22,6 +22,8 @@ limitations under the License.
   <name>Trellis parent</name>
   <modules>
     <module>pinot-bom</module>
+    <module>pinot-spi</module>
+    <module>pinot-common</module>
   </modules>
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
