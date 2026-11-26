@@ -20,7 +20,7 @@ import java.time.Duration;
 import org.apache.curator.test.TestingServer;
 import org.apache.helix.HelixManager;
 import org.apache.helix.InstanceType;
-import org.apache.helix.manager.zk.HelixManagerFactory;
+import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.junit.jupiter.api.Test;
 
