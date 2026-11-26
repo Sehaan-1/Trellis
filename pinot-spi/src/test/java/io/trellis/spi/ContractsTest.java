@@ -69,4 +69,7 @@ class ContractsTest {
 
   @Test
   void decoderContractCanBeImplemented() {
-    RecordDecoder de
+    RecordDecoder decoder = bytes -> new GenericRow().put("size", bytes.length);
+    assertThat(decoder.decode(new byte[] {1, 2}).get("size")).isEqualTo(2);
+  }
+}
