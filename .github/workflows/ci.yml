@@ -28,8 +28,7 @@ jobs:
       - name: Slice build
         run: ./mvnw -B -ntp -pl pinot-bom -am verify
       - name: SPI and common tests
-        run: |
-          ./mvnw -B -ntp -pl pinot-common -am verify > build.log 2>&1 || { grep -E "ERROR|FAILURE|Caused by" build.log | head -8 | while IFS= read -r line; do echo "::error::$line"; done; exit 1; }
+        run: ./mvnw -B -ntp -pl pinot-common -am verify
       - name: Full build and quality checks
         run: ./mvnw -B -ntp verify
       - name: Fast development profile
