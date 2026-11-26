@@ -34,3 +34,7 @@ Run `./mvnw -pl pinot-common -am verify` to test these modules and their prerequ
 `pinot-segment-spi` exposes read-only forward and string dictionary access. `pinot-segment-local` writes Lucene doc values and reopens committed segments through `MMapDirectory`. This is a Trellis-specific format, not Pinot-compatible. It currently accepts only non-null, single-valued STRING and LONG fields; dictionary ordering is Lucene UTF-8 byte order. Each write requires a new destination directory. A failed write may leave an uncommitted directory for the caller to remove. Reads may run concurrently; closing must not race with reads.
 
 Run `./mvnw -pl pinot-segment-local -am verify` for the affected modules.
+
+## Rebuildable secondary indexes
+
+`RoaringIndexes` builds in-memory equality and inclusive long-range indexes from immutable segments. `LuceneIndexes` builds in-memory analyzed text and Euclidean HNSW vector indexes. Text queries require all standard-analyzer tokens; vector document IDs are input-list positions. Search results are limited and score-ordered, and vector results are approximate. These indexes are not persisted; callers must close Lucene indexes and rebuild them after restart. Close must not race with queries. Bitmap results are sorted ID snapshots.
