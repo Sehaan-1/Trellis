@@ -28,6 +28,7 @@ limitations under the License.
     <module>pinot-segment-local</module>
     <module>pinot-core</module>
     <module>pinot-controller</module>
+    <module>pinot-deepstore-local</module>
   </modules>
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

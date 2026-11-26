@@ -17,7 +17,7 @@ A staged, Pinot-inspired OLAP system. This repository contains a build scaffold 
 
 ## Build
 
-Install JDK 17 or newer and run `./mvnw verify` (on Windows, `mvnw.cmd verify`). The wrapper downloads Maven 3.9.9 from Maven Central; dependencies and plugins also require Maven Central access. Run `./mvnw -pl pinot-bom -am verify` for this slice. `./mvnw -Pfast-dev verify` skips formatting and license checks, but not tests; use the default profile before merging. Apply Java formatting with `./mvnw -pl pinot-spi,pinot-common,pinot-segment-spi,pinot-segment-local,pinot-core,pinot-controller com.diffplug.spotless:spotless-maven-plugin:2.43.0:apply`.
+Install JDK 17 or newer and run `./mvnw verify` (on Windows, `mvnw.cmd verify`). The wrapper downloads Maven 3.9.9 from Maven Central; dependencies and plugins also require Maven Central access. Run `./mvnw -pl pinot-bom -am verify` for this slice. `./mvnw -Pfast-dev verify` skips formatting and license checks, but not tests; use the default profile before merging. Apply Java formatting with `./mvnw -pl pinot-spi,pinot-common,pinot-segment-spi,pinot-segment-local,pinot-core,pinot-controller,pinot-deepstore-local com.diffplug.spotless:spotless-maven-plugin:2.43.0:apply`.
 
 The root is an aggregator and parent for future modules. The standalone `io.trellis:pinot-bom:0.1.0-SNAPSHOT` contains centrally managed dependency versions; future consumers must explicitly import it in `dependencyManagement`. It is not imported by the root, avoiding a reactor model cycle. The BOM lists candidate versions, not runtime dependencies or a promise of adoption; each future slice must review and verify the dependencies it uses. CI checks the reactor on Java 17.
 
@@ -66,3 +66,11 @@ Run `./mvnw -pl pinot-controller -am verify` for controller and prerequisite tes
 ## Helix controller lifecycle
 
 `HelixController.start` connects a fresh caller-configured Helix CONTROLLER manager to a previously provisioned cluster and owns its connection until close. Helix handles leader election and failover. `isLeader()` and `isConnected()` are observations, not fencing tokens; do not use a prior observation to authorize later writes. Cluster provisioning and ZooKeeper authentication/ACL configuration remain the caller’s responsibility. The metadata HTTP API is independent and is **not** restricted to the Helix leader. Resource assignment, segment upload and a runnable integrated controller are not yet implemented.
+
+## Local content-addressed deep store
+
+`BlobStore` and `FileBlobStore` store opaque blobs keyed by SHA-256. Writes stream to a staged file, enforce a caller-provided byte limit, force file contents and publish with a no-overwrite hard link; concurrent identical writes deduplicate. Reads verify the digest before returning, but a destination may already contain corrupt or partial bytes on failure and must be discarded. Callers own the input/output streams.
+
+The local store requires an existing trusted directory and a filesystem that supports hard links and `NOFOLLOW_LINKS`. It does not fsync the directory or promise survival of power loss; crashes can leave staged files, and a failure after publication may have an uncertain outcome. It assumes no out-of-band modification of the store and makes the usual SHA-256 collision-resistance assumption. It is not yet a segment validator, upload endpoint or S3/GCS implementation.
+
+Run `./mvnw -pl pinot-deepstore-local -am verify` for the storage slice.
