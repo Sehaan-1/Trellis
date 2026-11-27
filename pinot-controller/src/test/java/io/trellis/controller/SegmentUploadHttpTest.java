@@ -221,7 +221,9 @@ class SegmentUploadHttpTest {
                   upload.upload(
                       "events", TYPE, "second", new java.io.ByteArrayInputStream(archive)))
           .isInstanceOf(SegmentArchiveUpload.TooManyUploadsException.class);
-      assertThat(post("events", "second", archive).statusCode()).isEqualTo(429);
+      var rejected = post("events", "second", archive);
+      assertThat(rejected.statusCode()).isEqualTo(429);
+      assertThat(rejected.headers().firstValue("Cache-Control")).contains("no-store");
       release.countDown();
       assertThat(first.get(20, TimeUnit.SECONDS).descriptor().segmentName()).isEqualTo("first");
       assertThat(post("events", "bad", new byte[] {1, 2, 3}).statusCode()).isEqualTo(500);
