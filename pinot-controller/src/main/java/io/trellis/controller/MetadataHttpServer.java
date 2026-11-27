@@ -36,7 +36,7 @@ public final class MetadataHttpServer implements AutoCloseable {
   /** Starts the HTTP service; the caller retains ownership of the metadata store and its client. */
   public static MetadataHttpServer start(URI bindUri, ZooKeeperMetadataStore store)
       throws Exception {
-    return startInternal(bindUri, store, null, null);
+    return startInternal(bindUri, store, null, null, null);
   }
 
   /** Starts the metadata server with an explicitly configured upload endpoint. */
@@ -46,7 +46,7 @@ public final class MetadataHttpServer implements AutoCloseable {
     Objects.requireNonNull(store, "store");
     if (!upload.usesMetadata(store))
       throw new IllegalArgumentException("upload must use the same metadata store");
-    return startInternal(bindUri, store, upload, null);
+    return startInternal(bindUri, store, upload, null, null);
   }
 
   /** Starts with explicitly selected optional upload and Helix resource operations. */
@@ -61,14 +61,27 @@ public final class MetadataHttpServer implements AutoCloseable {
       throw new IllegalArgumentException("upload must use the same metadata store");
     if (operations != null && !operations.usesMetadata(store))
       throw new IllegalArgumentException("operations must use the same metadata store");
-    return startInternal(bindUri, store, upload, operations);
+    return startInternal(bindUri, store, upload, operations, null);
+  }
+
+  // Runtime owns the controller and stops HTTP before closing it.
+  static MetadataHttpServer startForRuntime(
+      URI bindUri,
+      ZooKeeperMetadataStore store,
+      SegmentArchiveUpload upload,
+      SegmentResourceOperations operations,
+      HelixController controller)
+      throws Exception {
+    return startInternal(
+        bindUri, store, upload, operations, Objects.requireNonNull(controller, "controller"));
   }
 
   private static MetadataHttpServer startInternal(
       URI bindUri,
       ZooKeeperMetadataStore store,
       SegmentArchiveUpload upload,
-      SegmentResourceOperations operations)
+      SegmentResourceOperations operations,
+      HelixController controller)
       throws Exception {
     Objects.requireNonNull(bindUri, "bindUri");
     Objects.requireNonNull(store, "store");
@@ -111,6 +124,17 @@ public final class MetadataHttpServer implements AutoCloseable {
                 @Override
                 protected void configure() {
                   bind(operations).to(SegmentResourceOperations.class);
+                }
+              });
+    }
+    if (controller != null) {
+      config
+          .register(ControllerStatusResource.class)
+          .register(
+              new AbstractBinder() {
+                @Override
+                protected void configure() {
+                  bind(controller).to(HelixController.class);
                 }
               });
     }
