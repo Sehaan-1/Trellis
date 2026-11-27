@@ -16,8 +16,14 @@ package io.trellis.controller;
 import static org.assertj.core.api.Assertions.*;
 
 import io.trellis.spi.TableConfig;
+import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.apache.curator.test.TestingServer;
+import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.model.BuiltInStateModelDefinitions;
 import org.apache.helix.model.IdealState;
@@ -118,6 +124,127 @@ class HelixSegmentResourceTest {
                     HelixSegmentResource.create(
                         null, "cluster", "events", OFFLINE, List.of("x"), 1, 1));
       } finally {
+        admin.close();
+      }
+    }
+  }
+
+  @Test
+  void replacesExactExpectedSetPreservingRetainedState() throws Exception {
+    try (var zk = new TestingServer()) {
+      var admin = new ZKHelixAdmin(zk.getConnectString());
+      var manager =
+          HelixManagerFactory.getZKHelixManager(
+              "cluster", "observer", InstanceType.SPECTATOR, zk.getConnectString());
+      try {
+        assertThat(admin.addCluster("cluster")).isTrue();
+        admin.addStateModelDef(
+            "cluster",
+            "OnlineOffline",
+            BuiltInStateModelDefinitions.OnlineOffline.getStateModelDefinition());
+        HelixSegmentResource.create(admin, "cluster", "events", OFFLINE, List.of("a", "b"), 2, 10);
+        String resource = HelixSegmentResource.resourceName("events", OFFLINE);
+        IdealState original = admin.getResourceIdealState("cluster", resource);
+        String a = HelixSegmentResource.partitionName("a"),
+            b = HelixSegmentResource.partitionName("b");
+        original.setPreferenceList(a, List.of("node"));
+        original.setPartitionState(b, "node", "ONLINE");
+        original.getRecord().setSimpleField("custom", "keep");
+        admin.setResourceIdealState("cluster", resource, original);
+        manager.connect();
+        var accessor = manager.getHelixDataAccessor();
+        HelixSegmentResource.replaceSegments(
+            accessor, "events", OFFLINE, List.of("a", "b"), List.of("a", "c"), 10);
+        IdealState result = admin.getResourceIdealState("cluster", resource);
+        assertThat(result.getPartitionSet())
+            .containsExactlyInAnyOrder(a, HelixSegmentResource.partitionName("c"));
+        assertThat(result.getNumPartitions()).isEqualTo(2);
+        assertThat(result.getPreferenceList(a)).containsExactly("node");
+        assertThat(result.getRecord().getMapField(b)).isNull();
+        assertThat(result.getReplicas()).isEqualTo("2");
+        assertThat(result.getRecord().getSimpleField("custom")).isEqualTo("keep");
+        assertThatThrownBy(
+                () ->
+                    HelixSegmentResource.replaceSegments(
+                        accessor, "events", OFFLINE, List.of("a", "b"), List.of("a"), 10))
+            .isInstanceOf(IOException.class);
+        assertThatThrownBy(
+                () ->
+                    HelixSegmentResource.replaceSegments(
+                        accessor, "missing", OFFLINE, List.of("a"), List.of("b"), 10))
+            .isInstanceOf(IOException.class);
+        assertThat(
+                admin.getResourceIdealState(
+                    "cluster", HelixSegmentResource.resourceName("missing", OFFLINE)))
+            .isNull();
+        assertThatThrownBy(
+                () ->
+                    HelixSegmentResource.replaceSegments(
+                        accessor, "events", OFFLINE, List.of("a", "c"), List.of(), 10))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatNullPointerException()
+            .isThrownBy(
+                () ->
+                    HelixSegmentResource.replaceSegments(
+                        null, "events", OFFLINE, List.of("a"), List.of("b"), 10));
+      } finally {
+        manager.disconnect();
+        admin.close();
+      }
+    }
+  }
+
+  @Test
+  void competingUpdatesDoNotBothOverwriteSameExpectedSet() throws Exception {
+    try (var zk = new TestingServer()) {
+      var admin = new ZKHelixAdmin(zk.getConnectString());
+      var manager =
+          HelixManagerFactory.getZKHelixManager(
+              "cluster", "observer", InstanceType.SPECTATOR, zk.getConnectString());
+      try {
+        assertThat(admin.addCluster("cluster")).isTrue();
+        admin.addStateModelDef(
+            "cluster",
+            "OnlineOffline",
+            BuiltInStateModelDefinitions.OnlineOffline.getStateModelDefinition());
+        HelixSegmentResource.create(admin, "cluster", "events", OFFLINE, List.of("a"), 1, 10);
+        manager.connect();
+        var accessor = manager.getHelixDataAccessor();
+        var executor = Executors.newFixedThreadPool(2);
+        var latch = new CountDownLatch(1);
+        try {
+          java.util.concurrent.Callable<Boolean> left =
+              () -> {
+                latch.await();
+                try {
+                  HelixSegmentResource.replaceSegments(
+                      accessor, "events", OFFLINE, List.of("a"), List.of("left"), 10);
+                  return true;
+                } catch (IOException e) {
+                  return false;
+                }
+              };
+          java.util.concurrent.Callable<Boolean> right =
+              () -> {
+                latch.await();
+                try {
+                  HelixSegmentResource.replaceSegments(
+                      accessor, "events", OFFLINE, List.of("a"), List.of("right"), 10);
+                  return true;
+                } catch (IOException e) {
+                  return false;
+                }
+              };
+          var a = executor.submit(left);
+          var b = executor.submit(right);
+          latch.countDown();
+          assertThat(List.of(a.get(10, TimeUnit.SECONDS), b.get(10, TimeUnit.SECONDS)))
+              .containsExactlyInAnyOrder(true, false);
+        } finally {
+          executor.shutdownNow();
+        }
+      } finally {
+        manager.disconnect();
         admin.close();
       }
     }
