@@ -36,7 +36,7 @@ public final class MetadataHttpServer implements AutoCloseable {
   /** Starts the HTTP service; the caller retains ownership of the metadata store and its client. */
   public static MetadataHttpServer start(URI bindUri, ZooKeeperMetadataStore store)
       throws Exception {
-    return startInternal(bindUri, store, null);
+    return startInternal(bindUri, store, null, null);
   }
 
   /** Starts the metadata server with an explicitly configured upload endpoint. */
@@ -46,11 +46,30 @@ public final class MetadataHttpServer implements AutoCloseable {
     Objects.requireNonNull(store, "store");
     if (!upload.usesMetadata(store))
       throw new IllegalArgumentException("upload must use the same metadata store");
-    return startInternal(bindUri, store, upload);
+    return startInternal(bindUri, store, upload, null);
+  }
+
+  /** Starts with explicitly selected optional upload and Helix resource operations. */
+  public static MetadataHttpServer start(
+      URI bindUri,
+      ZooKeeperMetadataStore store,
+      SegmentArchiveUpload upload,
+      SegmentResourceOperations operations)
+      throws Exception {
+    Objects.requireNonNull(store, "store");
+    if (upload != null && !upload.usesMetadata(store))
+      throw new IllegalArgumentException("upload must use the same metadata store");
+    if (operations != null && !operations.usesMetadata(store))
+      throw new IllegalArgumentException("operations must use the same metadata store");
+    return startInternal(bindUri, store, upload, operations);
   }
 
   private static MetadataHttpServer startInternal(
-      URI bindUri, ZooKeeperMetadataStore store, SegmentArchiveUpload upload) throws Exception {
+      URI bindUri,
+      ZooKeeperMetadataStore store,
+      SegmentArchiveUpload upload,
+      SegmentResourceOperations operations)
+      throws Exception {
     Objects.requireNonNull(bindUri, "bindUri");
     Objects.requireNonNull(store, "store");
     if (!"http".equalsIgnoreCase(bindUri.getScheme())
@@ -81,6 +100,17 @@ public final class MetadataHttpServer implements AutoCloseable {
                 @Override
                 protected void configure() {
                   bind(upload).to(SegmentArchiveUpload.class);
+                }
+              });
+    }
+    if (operations != null) {
+      config
+          .register(SegmentResourceOperationsResource.class)
+          .register(
+              new AbstractBinder() {
+                @Override
+                protected void configure() {
+                  bind(operations).to(SegmentResourceOperations.class);
                 }
               });
     }
