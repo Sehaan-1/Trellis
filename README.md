@@ -88,3 +88,7 @@ This is only an extraction primitive. It does not validate Lucene checksums or s
 ## Local archive preparation
 
 `SegmentPreparation.prepare` composes bounded archive extraction with local segment integrity validation against the expected schema and document limit. The target must not exist and is visible during preparation; consume it only after success. Validation failure triggers best-effort cleanup, and cleanup failures are suppressed on the original error. The archive and filesystem must remain trusted and stable. This is not atomic publication, upload, authentication or a resource sandbox; the extraction and verification limitations above still apply.
+
+## Local segment archive writing
+
+`SegmentArchiveWriter.write` verifies a trusted, stable local segment against an expected schema and document limit, then streams a flat ZIP under caller-supplied archive, file-count, per-file and total expanded-byte limits. It excludes Lucene's transient `write.lock` and rejects non-regular files and names incompatible with `SegmentArchives`. The caller owns the output stream and must discard all output on failure. Compression and verification CPU and memory are not bounded by these limits. This is not authentication, publication or an upload endpoint.
