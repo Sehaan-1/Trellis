@@ -14,6 +14,7 @@ limitations under the License.
 package io.trellis.segment.local;
 
 import io.trellis.spi.Schema;
+import io.trellis.spi.SegmentDescriptor;
 import io.trellis.spi.storage.BlobStore;
 import java.io.FilterOutputStream;
 import java.io.IOException;
@@ -70,6 +71,47 @@ public final class SegmentBlobs {
       Schema schema,
       int maxDocuments)
       throws IOException {
+    return prepareInternal(
+        store, key, stagingDirectory, target, limits, schema, maxDocuments, null, null);
+  }
+
+  /**
+   * Prepares a blob according to a descriptor, additionally checking its claimed byte size and
+   * exact document count. The descriptor and store are trusted inputs, not authorization. The same
+   * filesystem, visibility, failure and resource limitations as the key-based overload apply.
+   */
+  public static SegmentPreparation.Report prepare(
+      BlobStore store,
+      SegmentDescriptor descriptor,
+      Path stagingDirectory,
+      Path target,
+      SegmentArchives.Limits limits,
+      int maxDocuments)
+      throws IOException {
+    Objects.requireNonNull(descriptor, "descriptor");
+    return prepareInternal(
+        store,
+        descriptor.blob().key(),
+        stagingDirectory,
+        target,
+        limits,
+        descriptor.schema(),
+        maxDocuments,
+        descriptor.blob().size(),
+        descriptor.documents());
+  }
+
+  private static SegmentPreparation.Report prepareInternal(
+      BlobStore store,
+      BlobStore.Key key,
+      Path stagingDirectory,
+      Path target,
+      SegmentArchives.Limits limits,
+      Schema schema,
+      int maxDocuments,
+      Long expectedBytes,
+      Integer expectedDocuments)
+      throws IOException {
     Objects.requireNonNull(store, "store");
     Objects.requireNonNull(key, "key");
     Objects.requireNonNull(target, "target");
@@ -77,13 +119,19 @@ public final class SegmentBlobs {
     Objects.requireNonNull(schema, "schema");
     if (maxDocuments < 0) throw new IllegalArgumentException("maxDocuments must be nonnegative");
     LocalSegments.validateSchema(schema);
+    if (expectedBytes != null && expectedBytes > limits.maxArchiveBytes())
+      throw new IOException("blob exceeds maxArchiveBytes");
+    if (expectedDocuments != null && expectedDocuments > maxDocuments)
+      throw new IOException("segment exceeds maxDocuments");
     try (StagedFile stage = createStage(stagingDirectory)) {
       try (OutputStream file = Files.newOutputStream(stage.path)) {
         LimitedOutput output = new LimitedOutput(file, limits.maxArchiveBytes());
         long reported = store.copyTo(key, output);
-        if (reported != output.count) throw new IOException("blob size mismatch");
+        if (reported != output.count || (expectedBytes != null && output.count != expectedBytes))
+          throw new IOException("blob size mismatch");
       }
-      return SegmentPreparation.prepare(stage.path, target, limits, schema, maxDocuments);
+      return SegmentPreparation.prepare(
+          stage.path, target, limits, schema, maxDocuments, expectedDocuments);
     }
   }
 
