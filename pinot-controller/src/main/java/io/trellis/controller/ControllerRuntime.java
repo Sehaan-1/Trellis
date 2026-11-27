@@ -86,13 +86,31 @@ public final class ControllerRuntime implements AutoCloseable {
       SegmentArchives.Limits limits,
       int maxDocuments,
       int replicas,
-      int maxSegments) {
+      int maxSegments,
+      int maxConcurrentUploads) {
+    /** Retains the default limit of one active upload. */
+    public IntegratedConfig(
+        URI bindUri,
+        Path stagingDirectory,
+        SegmentArchives.Limits limits,
+        int maxDocuments,
+        int replicas,
+        int maxSegments) {
+      this(bindUri, stagingDirectory, limits, maxDocuments, replicas, maxSegments, 1);
+    }
+
     public IntegratedConfig {
       Objects.requireNonNull(bindUri, "bindUri");
       Objects.requireNonNull(stagingDirectory, "stagingDirectory");
       Objects.requireNonNull(limits, "limits");
-      if (maxDocuments < 0 || replicas <= 0 || maxSegments <= 0)
+      if (maxDocuments < 0 || replicas <= 0 || maxSegments <= 0 || maxConcurrentUploads <= 0)
         throw new IllegalArgumentException("invalid controller limits");
+    }
+
+    SegmentArchiveUpload createUpload(ZooKeeperMetadataStore metadata, BlobStore blobs)
+        throws java.io.IOException {
+      return new SegmentArchiveUpload(
+          metadata, blobs, stagingDirectory, limits, maxDocuments, maxConcurrentUploads);
     }
   }
 
@@ -121,9 +139,7 @@ public final class ControllerRuntime implements AutoCloseable {
     Objects.requireNonNull(metadata, "metadata");
     Objects.requireNonNull(blobs, "blobs");
     Objects.requireNonNull(config, "config");
-    SegmentArchiveUpload upload =
-        new SegmentArchiveUpload(
-            metadata, blobs, config.stagingDirectory(), config.limits(), config.maxDocuments());
+    SegmentArchiveUpload upload = config.createUpload(metadata, blobs);
     HelixController controller = HelixController.start(manager);
     try {
       var operations =

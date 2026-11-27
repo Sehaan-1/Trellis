@@ -223,6 +223,77 @@ class ControllerRuntimeTest {
   }
 
   @Test
+  void integratedUploadHonorsConfiguredConcurrency() throws Exception {
+    var schema =
+        new Schema(
+            "games", java.util.List.of(new Schema.Field("team", Schema.DataType.STRING, false)));
+    metadata.createSchema(schema);
+    metadata.createTable(new TableConfig("events", "games", TableConfig.TableType.OFFLINE));
+    Path stage = Files.createDirectory(root.resolve("stage"));
+    var blobs = new FileBlobStore(Files.createDirectory(root.resolve("blobs")));
+    var limits = new SegmentArchives.Limits(1000, 10, 1000, 1000);
+    var config =
+        new ControllerRuntime.IntegratedConfig(
+            URI.create("http://127.0.0.1:0/"), stage, limits, 1, 1, 1, 2);
+    var upload = config.createUpload(metadata, blobs);
+    var entered = new java.util.concurrent.CountDownLatch(2);
+    var release = new java.util.concurrent.CountDownLatch(1);
+    java.util.function.Supplier<java.io.InputStream> blocked =
+        () ->
+            new java.io.InputStream() {
+              @Override
+              public int read() throws java.io.IOException {
+                entered.countDown();
+                try {
+                  if (!release.await(10, TimeUnit.SECONDS))
+                    throw new java.io.IOException("timed out");
+                } catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
+                  throw new java.io.IOException(e);
+                }
+                throw new java.io.IOException("intentional failure");
+              }
+            };
+    var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+    try {
+      var first =
+          executor.submit(
+              () -> upload.upload("events", TableConfig.TableType.OFFLINE, "one", blocked.get()));
+      var second =
+          executor.submit(
+              () -> upload.upload("events", TableConfig.TableType.OFFLINE, "two", blocked.get()));
+      assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+      assertThatThrownBy(
+              () ->
+                  upload.upload(
+                      "events",
+                      TableConfig.TableType.OFFLINE,
+                      "three",
+                      java.io.InputStream.nullInputStream()))
+          .isInstanceOf(SegmentArchiveUpload.TooManyUploadsException.class);
+      release.countDown();
+      assertThatThrownBy(() -> first.get(10, TimeUnit.SECONDS))
+          .isInstanceOf(java.util.concurrent.ExecutionException.class)
+          .hasCauseInstanceOf(java.io.IOException.class);
+      assertThatThrownBy(() -> second.get(10, TimeUnit.SECONDS))
+          .isInstanceOf(java.util.concurrent.ExecutionException.class)
+          .hasCauseInstanceOf(java.io.IOException.class);
+      // A metadata lookup after both failures proves permits were released.
+      assertThatThrownBy(
+              () ->
+                  upload.upload(
+                      "missing",
+                      TableConfig.TableType.OFFLINE,
+                      "three",
+                      java.io.InputStream.nullInputStream()))
+          .isInstanceOf(org.apache.zookeeper.KeeperException.NoNodeException.class);
+    } finally {
+      release.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
   void integratedRuntimeValidatesConfigAndCleansUpAfterBindFailure() throws Exception {
     Path stage = Files.createDirectory(root.resolve("stage"));
     var blobs = new FileBlobStore(Files.createDirectory(root.resolve("blobs")));
@@ -235,6 +306,16 @@ class ControllerRuntimeTest {
     assertThatThrownBy(() -> new ControllerRuntime.IntegratedConfig(bind, stage, limits, 1, 0, 1))
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> new ControllerRuntime.IntegratedConfig(bind, stage, limits, 1, 1, 0))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThat(
+            new ControllerRuntime.IntegratedConfig(bind, stage, limits, 1, 1, 1)
+                .maxConcurrentUploads())
+        .isEqualTo(1);
+    assertThatThrownBy(
+            () -> new ControllerRuntime.IntegratedConfig(bind, stage, limits, 1, 1, 1, 0))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(
+            () -> new ControllerRuntime.IntegratedConfig(bind, stage, limits, 1, 1, 1, -1))
         .isInstanceOf(IllegalArgumentException.class);
     var missing =
         new ControllerRuntime.IntegratedConfig(bind, root.resolve("missing"), limits, 1, 1, 1);
