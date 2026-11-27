@@ -188,6 +188,51 @@ class SegmentUploadHttpTest {
   }
 
   @Test
+  void rejectsZeroProgressInputAndReleasesPermitWithoutClosingInput() throws Exception {
+    class ZeroProgress extends java.io.InputStream {
+      boolean closed;
+      int reads;
+
+      @Override
+      public int read() {
+        throw new AssertionError("unexpected single-byte read");
+      }
+
+      @Override
+      public int read(byte[] bytes, int offset, int length) {
+        assertThat(length).isPositive();
+        reads++;
+        if (reads == 1) {
+          bytes[offset] = 1;
+          return 1;
+        }
+        return 0;
+      }
+
+      @Override
+      public void close() {
+        closed = true;
+      }
+    }
+    var source = new ZeroProgress();
+    assertThatThrownBy(() -> upload.upload("events", TYPE, "bad", source))
+        .isInstanceOf(java.io.IOException.class)
+        .hasMessage("input stream made no progress");
+    assertThat(source.reads).isEqualTo(2);
+    assertThat(source.closed).isFalse();
+    assertThatThrownBy(() -> metadata.getSegment("events", TYPE, "bad"))
+        .isInstanceOf(org.apache.zookeeper.KeeperException.NoNodeException.class);
+    emptyStage();
+    assertThat(
+            upload
+                .upload("events", TYPE, "good", new java.io.ByteArrayInputStream(archive))
+                .descriptor()
+                .documents())
+        .isEqualTo(1);
+    emptyStage();
+  }
+
+  @Test
   void rejectsConcurrentUploadsAndReleasesPermitAfterCompletionAndFailure() throws Exception {
     server = MetadataHttpServer.start(URI.create("http://127.0.0.1:0/"), metadata, upload);
     var entered = new java.util.concurrent.CountDownLatch(1);
