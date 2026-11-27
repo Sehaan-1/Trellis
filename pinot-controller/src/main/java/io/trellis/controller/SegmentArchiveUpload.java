@@ -88,12 +88,13 @@ public final class SegmentArchiveUpload {
   }
 
   /**
-   * Reads caller-owned input once without closing it. Table and schema metadata must remain stable
-   * throughout the call; reads are not transactional or leader-fenced. A failure may leave an
-   * orphaned blob or uncertain metadata outcome. Temporary-file cleanup may fail, and a crash may
-   * leave files. The per-instance limit rejects excess operations without queueing. It does not
-   * bound concurrent requests before this method, other service instances, elapsed time, validation
-   * CPU or memory. Call only across a trusted boundary with external authentication and controls.
+   * Reads caller-owned input once without closing it. A zero-byte read with a nonempty buffer is
+   * rejected as an I/O failure. Table and schema metadata must remain stable throughout the call;
+   * reads are not transactional or leader-fenced. A failure may leave an orphaned blob or uncertain
+   * metadata outcome. Temporary-file cleanup may fail, and a crash may leave files. The
+   * per-instance limit rejects excess operations without queueing. It does not bound concurrent
+   * requests before this method, other service instances, elapsed time, validation CPU or memory.
+   * Call only across a trusted boundary with external authentication and controls.
    */
   public SegmentRegistrar.Registration upload(
       String tableName, TableConfig.TableType type, String segmentName, InputStream input)
@@ -121,7 +122,7 @@ public final class SegmentArchiveUpload {
         byte[] buffer = new byte[65536];
         int count;
         while ((count = input.read(buffer)) != -1) {
-          if (count == 0) continue;
+          if (count == 0) throw new IOException("input stream made no progress");
           if (count > limits.maxArchiveBytes() - total) throw new TooLargeException();
           output.write(buffer, 0, count);
           total += count;
