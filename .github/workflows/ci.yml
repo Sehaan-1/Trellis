@@ -35,6 +35,8 @@ jobs:
         run: ./mvnw -B -ntp -pl pinot-core -am verify
       - name: Controller tests
         run: ./mvnw -B -ntp -pl pinot-controller -am verify
+      - name: Local deep-store tests
+        run: ./mvnw -B -ntp -pl pinot-deepstore-local -am verify
       - name: Full build and quality checks
         run: ./mvnw -B -ntp verify
       - name: Fast development profile
