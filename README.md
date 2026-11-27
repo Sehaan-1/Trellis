@@ -92,3 +92,7 @@ This is only an extraction primitive. It does not validate Lucene checksums or s
 ## Local segment archive writing
 
 `SegmentArchiveWriter.write` verifies a trusted, stable local segment against an expected schema and document limit, then streams a flat ZIP under caller-supplied archive, file-count, per-file and total expanded-byte limits. It excludes Lucene's transient `write.lock` and rejects non-regular files and names incompatible with `SegmentArchives`. The caller owns the output stream and must discard all output on failure. Compression and verification CPU and memory are not bounded by these limits. This is not authentication, publication or an upload endpoint.
+
+## Segment blob transfer
+
+`SegmentBlobs.put` stages a bounded, verified segment archive before storing it through `BlobStore`; `SegmentBlobs.prepare` copies a blob into bounded staging, then extracts and verifies it. The existing staging directory, segment, target parent and filesystem must be trusted and stable. The blob store must honor its checksum-verification contract. The target is visible during preparation and must not be consumed before success. Staging files are removed on completion or failure, but cleanup may fail; a cleanup failure after preparation means the target may remain even though the call failed, and a failure after a put may leave a published blob. Crashes may leave staging files. ZIP bytes are not canonical, so retries need not produce the same blob key. This is not controller metadata publication, atomic serving, upload, or an untrusted-input sandbox.
