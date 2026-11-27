@@ -17,7 +17,12 @@ import static org.assertj.core.api.Assertions.*;
 
 import io.trellis.common.ZooKeeperMetadataStore;
 import io.trellis.deepstore.local.FileBlobStore;
+import io.trellis.segment.local.LocalSegments;
+import io.trellis.segment.local.SegmentArchiveWriter;
 import io.trellis.segment.local.SegmentArchives;
+import io.trellis.spi.GenericRow;
+import io.trellis.spi.Schema;
+import io.trellis.spi.TableConfig;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -35,6 +40,7 @@ import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
+import org.apache.helix.model.BuiltInStateModelDefinitions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -162,5 +168,94 @@ class ControllerRuntimeTest {
           .isEqualTo(404);
     }
     assertThat(manager.isConnected()).isFalse();
+  }
+
+  @Test
+  void integratedRuntimeUploadsAndBootstrapsRegisteredSegment() throws Exception {
+    admin.addStateModelDef(
+        "cluster",
+        "OnlineOffline",
+        BuiltInStateModelDefinitions.OnlineOffline.getStateModelDefinition());
+    var schema =
+        new Schema(
+            "games", java.util.List.of(new Schema.Field("team", Schema.DataType.STRING, false)));
+    metadata.createSchema(schema);
+    metadata.createTable(new TableConfig("events", schema.name(), TableConfig.TableType.OFFLINE));
+    Path stage = Files.createDirectory(root.resolve("stage"));
+    var blobs = new FileBlobStore(Files.createDirectory(root.resolve("blobs")));
+    var limits = new SegmentArchives.Limits(1000000, 100, 1000000, 1000000);
+    var config =
+        new ControllerRuntime.IntegratedConfig(
+            URI.create("http://127.0.0.1:0/"), stage, limits, 1, 1, 10);
+    Path source = root.resolve("source");
+    LocalSegments.write(source, schema, java.util.List.of(new GenericRow().put("team", "red")));
+    var zip = new java.io.ByteArrayOutputStream();
+    SegmentArchiveWriter.write(source, zip, limits, schema, 1);
+    try (var runtime = ControllerRuntime.startIntegrated(manager, admin, metadata, blobs, config)) {
+      var http = HttpClient.newHttpClient();
+      String base = "http://127.0.0.1:" + runtime.port();
+      var upload =
+          HttpRequest.newBuilder(URI.create(base + "/tables/OFFLINE/events/segments/one/content"))
+              .header("Content-Type", "application/octet-stream")
+              .POST(HttpRequest.BodyPublishers.ofByteArray(zip.toByteArray()))
+              .build();
+      var uploaded = http.send(upload, HttpResponse.BodyHandlers.ofString());
+      assertThat(uploaded.statusCode()).as("upload: %s", uploaded.body()).isEqualTo(201);
+      assertThat(
+              metadata
+                  .getSegment("events", TableConfig.TableType.OFFLINE, "one")
+                  .value()
+                  .documents())
+          .isEqualTo(1);
+      var bootstrap =
+          HttpRequest.newBuilder(URI.create(base + "/tables/OFFLINE/events/assignment"))
+              .POST(HttpRequest.BodyPublishers.noBody())
+              .build();
+      var created = http.send(bootstrap, HttpResponse.BodyHandlers.ofString());
+      assertThat(created.statusCode()).as("bootstrap: %s", created.body()).isEqualTo(201);
+      var resource = HelixSegmentResource.resourceName("events", TableConfig.TableType.OFFLINE);
+      assertThat(admin.getResourceIdealState("cluster", resource).getPartitionSet())
+          .containsExactly(HelixSegmentResource.partitionName("one"));
+    }
+    assertThat(manager.isConnected()).isFalse();
+    assertThat(curator.getZookeeperClient().isConnected()).isTrue();
+    assertThat(admin.getClusters()).contains("cluster");
+  }
+
+  @Test
+  void integratedRuntimeValidatesConfigAndCleansUpAfterBindFailure() throws Exception {
+    Path stage = Files.createDirectory(root.resolve("stage"));
+    var blobs = new FileBlobStore(Files.createDirectory(root.resolve("blobs")));
+    var limits = new SegmentArchives.Limits(1000, 10, 1000, 1000);
+    URI bind = URI.create("http://127.0.0.1:0/");
+    assertThatNullPointerException()
+        .isThrownBy(() -> new ControllerRuntime.IntegratedConfig(null, stage, limits, 1, 1, 1));
+    assertThatThrownBy(() -> new ControllerRuntime.IntegratedConfig(bind, stage, limits, -1, 1, 1))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new ControllerRuntime.IntegratedConfig(bind, stage, limits, 1, 0, 1))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new ControllerRuntime.IntegratedConfig(bind, stage, limits, 1, 1, 0))
+        .isInstanceOf(IllegalArgumentException.class);
+    var missing =
+        new ControllerRuntime.IntegratedConfig(bind, root.resolve("missing"), limits, 1, 1, 1);
+    assertThatThrownBy(
+            () -> ControllerRuntime.startIntegrated(manager, admin, metadata, blobs, missing))
+        .isInstanceOf(java.io.IOException.class);
+    assertThat(manager.isConnected()).isFalse();
+    try (var socket = new ServerSocket(0)) {
+      var occupied =
+          new ControllerRuntime.IntegratedConfig(
+              URI.create("http://127.0.0.1:" + socket.getLocalPort() + "/"),
+              stage,
+              limits,
+              1,
+              1,
+              1);
+      assertThatThrownBy(
+              () -> ControllerRuntime.startIntegrated(manager, admin, metadata, blobs, occupied))
+          .isInstanceOf(Exception.class);
+      assertThat(manager.isConnected()).isFalse();
+    }
+    assertThat(curator.getZookeeperClient().isConnected()).isTrue();
   }
 }
