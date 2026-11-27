@@ -13,15 +13,10 @@ limitations under the License.
 */
 package io.trellis.controller;
 
+import io.trellis.common.SegmentHelixIdentity;
 import io.trellis.spi.TableConfig;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Objects;
@@ -36,39 +31,19 @@ import org.apache.helix.zookeeper.datamodel.ZNRecord;
 public final class HelixSegmentResource {
   private HelixSegmentResource() {}
 
-  private static final int MAX_NAME_BYTES = 128;
-
   /** Deterministic, ZooKeeper-safe resource name, distinct across table types. */
   public static String resourceName(String tableName, TableConfig.TableType type) {
-    Objects.requireNonNull(type, "type");
-    return "trellis_" + type.name() + "_" + encodeName(tableName);
+    return SegmentHelixIdentity.resourceName(tableName, type);
   }
 
   /** Deterministic partition name for a logical segment. */
   public static String partitionName(String segmentName) {
-    return "s_" + encodeName(segmentName);
+    return SegmentHelixIdentity.partitionName(segmentName);
   }
 
   /** Decodes only canonical partition names produced by this class. */
   public static String segmentName(String partitionName) {
-    Objects.requireNonNull(partitionName, "partitionName");
-    if (!partitionName.startsWith("s_"))
-      throw new IllegalArgumentException("invalid partition name");
-    try {
-      byte[] bytes = Base64.getUrlDecoder().decode(partitionName.substring(2));
-      String name =
-          StandardCharsets.UTF_8
-              .newDecoder()
-              .onMalformedInput(CodingErrorAction.REPORT)
-              .onUnmappableCharacter(CodingErrorAction.REPORT)
-              .decode(ByteBuffer.wrap(bytes))
-              .toString();
-      if (!partitionName(name).equals(partitionName))
-        throw new IllegalArgumentException("noncanonical partition name");
-      return name;
-    } catch (CharacterCodingException | IllegalArgumentException e) {
-      throw new IllegalArgumentException("invalid partition name", e);
-    }
+    return SegmentHelixIdentity.segmentName(partitionName);
   }
 
   /**
@@ -180,25 +155,5 @@ public final class HelixSegmentResource {
             },
             replacement);
     if (!updated) throw new IOException("resource update failed or expected segment set changed");
-  }
-
-  private static String encodeName(String name) {
-    Objects.requireNonNull(name, "name");
-    if (name.isBlank()) throw new IllegalArgumentException("name must not be blank");
-    try {
-      ByteBuffer bytes =
-          StandardCharsets.UTF_8
-              .newEncoder()
-              .onMalformedInput(CodingErrorAction.REPORT)
-              .onUnmappableCharacter(CodingErrorAction.REPORT)
-              .encode(CharBuffer.wrap(name));
-      if (bytes.remaining() > MAX_NAME_BYTES)
-        throw new IllegalArgumentException("name exceeds UTF-8 byte limit");
-      byte[] copy = new byte[bytes.remaining()];
-      bytes.get(copy);
-      return Base64.getUrlEncoder().withoutPadding().encodeToString(copy);
-    } catch (CharacterCodingException e) {
-      throw new IllegalArgumentException("name must be valid Unicode", e);
-    }
   }
 }
