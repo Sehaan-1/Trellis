@@ -132,7 +132,7 @@ Run `./mvnw -pl pinot-controller -am verify` for this slice and `./mvnw verify` 
 
 ## Controller lifecycle wrapper
 
-`ControllerRuntime.start` starts the Helix controller and metadata HTTP server together; close stops HTTP and disconnects Helix. Startup failure closes the Helix controller, while the caller retains ownership of the metadata store and Curator client. The HTTP API remains **unauthenticated and not leader-gated**; use a trusted bind interface and authenticated TLS proxy, and configure ZooKeeper authentication and ACLs. This wrapper does not provide a standalone executable, segment upload, a reconciliation loop, or leader fencing.
+`ControllerRuntime.start` starts the Helix controller and metadata HTTP server together; close stops HTTP and disconnects Helix. Startup failure closes the Helix controller, while the caller retains ownership of the metadata store and Curator client. The HTTP API remains **unauthenticated and not leader-gated**; use a trusted bind interface and authenticated TLS proxy, and configure ZooKeeper authentication and ACLs. The basic overload does not enable uploads. Neither overload provides a standalone executable, a reconciliation loop, or leader fencing.
 
 ## Segment descriptor HTTP API
 
@@ -141,3 +141,9 @@ The metadata server exposes descriptor POST and bounded name listing at `/tables
 ## Local archive registration
 
 `SegmentArchiveRegistrar.register` extracts an existing ZIP into a new staging directory under caller-supplied limits, validates the segment against the expected schema and document limit, removes staging, stores the original ZIP through `BlobStore`, and creates its ZooKeeper descriptor. The archive, staging directory and filesystem must be trusted and stable throughout. Blob and metadata writes are not transactional: failures can leave an orphaned blob or uncertain metadata outcome; reconcile before retrying. Cleanup can fail and crashes can leave staging files. This does not accept HTTP uploads, authenticate, check table/schema existence, assign segments or fence leadership.
+
+## Opt-in segment archive upload
+
+Construct `SegmentArchiveUpload` with the metadata store, blob store, trusted staging directory, archive limits and document limit; pass it to the upload-enabled `MetadataHttpServer.start` or `ControllerRuntime.start` overload. POST a ZIP as `application/octet-stream` to `/tables/{OFFLINE|REALTIME}/{name}/segments/{segment}/content`. The service looks up the table and schema, stages the request with a compressed-byte cap, validates the ZIP and segment, stores the original blob and creates its descriptor. Success returns 201, a descriptor location and ETag; compressed input above the cap returns 413. Other archive/storage failures may return 500 with an uncertain outcome.
+
+**Security and consistency:** upload is opt-in but unauthenticated, not leader-gated and not a sandbox for hostile archives. Use only behind an authenticated TLS boundary with external request timeouts, concurrency, CPU, memory and disk controls. Keep table/schema metadata and staging files stable during the call; reads and writes are not transactional. Failures can leave orphan blobs, uncertain metadata, or temporary files; reconcile before retrying. No assignment or reconciliation is performed automatically.

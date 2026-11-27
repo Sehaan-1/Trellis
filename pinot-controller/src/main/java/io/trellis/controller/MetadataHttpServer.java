@@ -24,7 +24,7 @@ import org.glassfish.jersey.jackson.JacksonFeature;
 import org.glassfish.jersey.jetty.JettyHttpContainerFactory;
 import org.glassfish.jersey.server.ResourceConfig;
 
-/** Minimal unauthenticated HTTP metadata API. Deploy only behind a secured network boundary. */
+/** Unauthenticated HTTP metadata API with optional uploads; use a secured network boundary. */
 public final class MetadataHttpServer implements AutoCloseable {
   private final Server server;
   private final AtomicBoolean closed = new AtomicBoolean();
@@ -36,6 +36,21 @@ public final class MetadataHttpServer implements AutoCloseable {
   /** Starts the HTTP service; the caller retains ownership of the metadata store and its client. */
   public static MetadataHttpServer start(URI bindUri, ZooKeeperMetadataStore store)
       throws Exception {
+    return startInternal(bindUri, store, null);
+  }
+
+  /** Starts the metadata server with an explicitly configured upload endpoint. */
+  public static MetadataHttpServer start(
+      URI bindUri, ZooKeeperMetadataStore store, SegmentArchiveUpload upload) throws Exception {
+    Objects.requireNonNull(upload, "upload");
+    Objects.requireNonNull(store, "store");
+    if (!upload.usesMetadata(store))
+      throw new IllegalArgumentException("upload must use the same metadata store");
+    return startInternal(bindUri, store, upload);
+  }
+
+  private static MetadataHttpServer startInternal(
+      URI bindUri, ZooKeeperMetadataStore store, SegmentArchiveUpload upload) throws Exception {
     Objects.requireNonNull(bindUri, "bindUri");
     Objects.requireNonNull(store, "store");
     if (!"http".equalsIgnoreCase(bindUri.getScheme())
@@ -58,6 +73,17 @@ public final class MetadataHttpServer implements AutoCloseable {
                     bind(store).to(ZooKeeperMetadataStore.class);
                   }
                 });
+    if (upload != null) {
+      config
+          .register(SegmentUploadResource.class)
+          .register(
+              new AbstractBinder() {
+                @Override
+                protected void configure() {
+                  bind(upload).to(SegmentArchiveUpload.class);
+                }
+              });
+    }
     Server server = JettyHttpContainerFactory.createServer(bindUri, config, false);
     // Jersey configures the port but not the connector host; honor the requested bind address.
     ((ServerConnector) server.getConnectors()[0]).setHost(bindUri.getHost());

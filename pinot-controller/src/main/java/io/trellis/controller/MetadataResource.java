@@ -69,7 +69,7 @@ public final class MetadataResource {
     this.store = Objects.requireNonNull(store, "store");
   }
 
-  private static String name(String s) {
+  static String name(String s) {
     if (s == null || !s.matches("[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}"))
       throw new IllegalArgumentException("invalid resource name");
     return s;
@@ -147,7 +147,7 @@ public final class MetadataResource {
     return new TableBody(table.tableName(), table.schemaName(), table.type().name());
   }
 
-  private static TableConfig.TableType type(String type) {
+  static TableConfig.TableType type(String type) {
     try {
       return TableConfig.TableType.valueOf(type);
     } catch (RuntimeException e) {
@@ -166,22 +166,24 @@ public final class MetadataResource {
     }
   }
 
-  private static EntityTag tag(int version) {
+  static EntityTag tag(int version) {
     return new EntityTag(Integer.toString(version));
   }
 
   @FunctionalInterface
-  private interface Action {
+  interface Action {
     Response run() throws Exception;
   }
 
-  private static Response perform(Action action) {
+  static Response perform(Action action) {
     try {
       return action.run();
     } catch (WebApplicationException e) {
       throw e;
     } catch (IllegalArgumentException e) {
       return Response.status(400).entity(new ErrorBody("invalid request")).build();
+    } catch (SegmentArchiveUpload.TooLargeException e) {
+      return Response.status(413).entity(new ErrorBody("archive exceeds size limit")).build();
     } catch (ZooKeeperMetadataStore.SegmentLimitExceededException e) {
       return Response.status(422).entity(new ErrorBody("segment count exceeds max")).build();
     } catch (KeeperException.NodeExistsException e) {

@@ -37,16 +37,43 @@ public final class ControllerRuntime implements AutoCloseable {
    *
    * <p>The HTTP API is unauthenticated and is NOT restricted to the Helix leader. Only bind to a
    * trusted interface behind a secured proxy. Leadership observations are not fencing tokens. This
-   * wrapper does not provision a cluster, ingest segments or start a reconciliation loop.
+   * The basic overload does not expose uploads; neither overload provisions a cluster or starts a
+   * reconciliation loop.
    */
   public static ControllerRuntime start(
       HelixManager manager, URI bindUri, ZooKeeperMetadataStore metadata) throws Exception {
+    return startInternal(manager, bindUri, metadata, null);
+  }
+
+  /** Starts a controller runtime with the optional upload endpoint explicitly enabled. */
+  public static ControllerRuntime start(
+      HelixManager manager,
+      URI bindUri,
+      ZooKeeperMetadataStore metadata,
+      SegmentArchiveUpload upload)
+      throws Exception {
+    Objects.requireNonNull(upload, "upload");
+    Objects.requireNonNull(metadata, "metadata");
+    if (!upload.usesMetadata(metadata))
+      throw new IllegalArgumentException("upload must use the same metadata store");
+    return startInternal(manager, bindUri, metadata, upload);
+  }
+
+  private static ControllerRuntime startInternal(
+      HelixManager manager,
+      URI bindUri,
+      ZooKeeperMetadataStore metadata,
+      SegmentArchiveUpload upload)
+      throws Exception {
     Objects.requireNonNull(manager, "manager");
     Objects.requireNonNull(bindUri, "bindUri");
     Objects.requireNonNull(metadata, "metadata");
     HelixController controller = HelixController.start(manager);
     try {
-      MetadataHttpServer http = MetadataHttpServer.start(bindUri, metadata);
+      MetadataHttpServer http =
+          upload == null
+              ? MetadataHttpServer.start(bindUri, metadata)
+              : MetadataHttpServer.start(bindUri, metadata, upload);
       return new ControllerRuntime(controller, http);
     } catch (Exception | Error failure) {
       try {

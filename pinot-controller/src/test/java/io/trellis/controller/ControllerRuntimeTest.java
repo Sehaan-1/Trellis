@@ -16,11 +16,15 @@ package io.trellis.controller;
 import static org.assertj.core.api.Assertions.*;
 
 import io.trellis.common.ZooKeeperMetadataStore;
+import io.trellis.deepstore.local.FileBlobStore;
+import io.trellis.segment.local.SegmentArchives;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import org.apache.curator.framework.CuratorFramework;
@@ -34,8 +38,10 @@ import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class ControllerRuntimeTest {
+  @TempDir Path root;
   private TestingServer zk;
   private CuratorFramework curator;
   private ZKHelixAdmin admin;
@@ -123,6 +129,38 @@ class ControllerRuntimeTest {
     assertThatNullPointerException()
         .isThrownBy(() -> ControllerRuntime.start(manager, null, metadata));
     assertThatNullPointerException().isThrownBy(() -> ControllerRuntime.start(manager, bind, null));
+    assertThat(manager.isConnected()).isFalse();
+  }
+
+  @Test
+  void runtimeCanEnableUploadOnlyWithSameMetadataStore() throws Exception {
+    Path stage = Files.createDirectory(root.resolve("stage"));
+    var blobs = new FileBlobStore(Files.createDirectory(root.resolve("blobs")));
+    var limits = new SegmentArchives.Limits(1000, 10, 1000, 1000);
+    var upload = new SegmentArchiveUpload(metadata, blobs, stage, limits, 1);
+    var wrong = new ZooKeeperMetadataStore(curator, "/other");
+    assertThatThrownBy(
+            () ->
+                ControllerRuntime.start(manager, URI.create("http://127.0.0.1:0/"), wrong, upload))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThat(manager.isConnected()).isFalse();
+    try (var runtime =
+        ControllerRuntime.start(manager, URI.create("http://127.0.0.1:0/"), metadata, upload)) {
+      var request =
+          HttpRequest.newBuilder(
+                  URI.create(
+                      "http://127.0.0.1:"
+                          + runtime.port()
+                          + "/tables/OFFLINE/missing/segments/x/content"))
+              .header("Content-Type", "application/octet-stream")
+              .POST(HttpRequest.BodyPublishers.ofByteArray(new byte[] {1}))
+              .build();
+      assertThat(
+              HttpClient.newHttpClient()
+                  .send(request, HttpResponse.BodyHandlers.ofString())
+                  .statusCode())
+          .isEqualTo(404);
+    }
     assertThat(manager.isConnected()).isFalse();
   }
 }
