@@ -100,3 +100,7 @@ This is only an extraction primitive. It does not validate Lucene checksums or s
 ## Segment descriptor records
 
 `SegmentDescriptor` is an immutable claim identifying a table and segment, a complete ordered schema snapshot, a SHA-256 blob key and size, and a document count. `SegmentDescriptorRecord` converts it to and from a versioned Helix `ZNRecord`. A descriptor alone does not prove that the blob exists, matches the claimed size or schema, or has been validated; consumers must perform those checks. This is a metadata contract only: it does not persist records, coordinate assignments, publish segments or enforce table/schema referential integrity.
+
+## ZooKeeper segment descriptors
+
+`ZooKeeperMetadataStore` supports create, read, version-checked update and delete of segment descriptors, scoped by table name, table type and segment name. Reads reject malformed records and mismatched identities. These operations store claims only: they do not check table or schema existence, validate or delete blobs, provide segment listing or assignment, or fence leadership. ZooKeeper data versions reset on delete/recreate and are not globally unique generations; clients must coordinate name reuse. Network failures can leave mutation outcomes uncertain, and reads have ZooKeeper's normal consistency semantics. The caller owns the Curator client and must configure authentication and ACLs.
