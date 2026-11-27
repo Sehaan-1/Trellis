@@ -43,6 +43,13 @@ public final class ZooKeeperMetadataStore {
     }
   }
 
+  /** Raised when a segment listing contains more names than its caller permits. */
+  public static final class SegmentLimitExceededException extends IOException {
+    public SegmentLimitExceededException() {
+      super("segment count exceeds maxNames");
+    }
+  }
+
   private static final String FORMAT = "trellis.metadata.version";
   private static final ZNRecordSerializer SERIALIZER = new ZNRecordSerializer();
   // Helix's serializer configures a shared ObjectMapper while serializing/deserializing.
@@ -191,7 +198,7 @@ public final class ZooKeeperMetadataStore {
     } catch (Exception e) {
       throw new IOException("segment listing failed", e);
     }
-    if (children.size() > maxNames) throw new IOException("segment count exceeds maxNames");
+    if (children.size() > maxNames) throw new SegmentLimitExceededException();
     List<String> names = new ArrayList<>(children.size());
     for (String child : children) names.add(decodeNameKey(child));
     names.sort(String::compareTo);

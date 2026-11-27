@@ -133,3 +133,7 @@ Run `./mvnw -pl pinot-controller -am verify` for this slice and `./mvnw verify` 
 ## Controller lifecycle wrapper
 
 `ControllerRuntime.start` starts the Helix controller and metadata HTTP server together; close stops HTTP and disconnects Helix. Startup failure closes the Helix controller, while the caller retains ownership of the metadata store and Curator client. The HTTP API remains **unauthenticated and not leader-gated**; use a trusted bind interface and authenticated TLS proxy, and configure ZooKeeper authentication and ACLs. This wrapper does not provide a standalone executable, segment upload, a reconciliation loop, or leader fencing.
+
+## Segment descriptor HTTP API
+
+The metadata server exposes descriptor POST and bounded name listing at `/tables/{OFFLINE|REALTIME}/{name}/segments`, and GET/PUT/DELETE at the same path plus `/{segment}`. Listing requires `?max=1` through `?max=10000`; it returns 422 when more names exist. ZooKeeper still materializes the full child list before the cap is checked. PUT/DELETE require the strong numeric `If-Match` ETag; versions have the existing delete/recreate ABA limitation. Names in HTTP requests follow the existing ASCII name policy. These endpoints store unverified metadata claims only: they do not upload, authenticate, validate or delete blobs, check table/schema existence, or require controller leadership. Deploy only behind an authenticated TLS boundary and configure ZooKeeper security.
