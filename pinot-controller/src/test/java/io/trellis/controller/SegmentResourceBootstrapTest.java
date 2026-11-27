@@ -27,6 +27,8 @@ import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.curator.test.TestingServer;
+import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.model.BuiltInStateModelDefinitions;
 import org.apache.helix.model.IdealState;
@@ -172,5 +174,83 @@ class SegmentResourceBootstrapTest {
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> new SegmentResourceBootstrap.Result("resource", 0))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void syncsAddedAndRemovedDescriptorsThroughRealHelix() throws Exception {
+    table();
+    metadata.createSegment(descriptor("events", TYPE, "a", SCHEMA));
+    metadata.createSegment(descriptor("events", TYPE, "b", SCHEMA));
+    SegmentResourceBootstrap.create(admin, metadata, "cluster", "events", TYPE, 2, 10);
+    metadata.deleteSegment("events", TYPE, "b", 0);
+    metadata.createSegment(descriptor("events", TYPE, "c", SCHEMA));
+    var manager =
+        HelixManagerFactory.getZKHelixManager(
+            "cluster", "observer", InstanceType.SPECTATOR, zk.getConnectString());
+    try {
+      manager.connect();
+      List<String> desired =
+          SegmentResourceSync.apply(
+              manager.getHelixDataAccessor(), metadata, "events", TYPE, List.of("a", "b"), 10);
+      assertThat(desired).containsExactly("a", "c");
+      assertThatThrownBy(() -> desired.add("d")).isInstanceOf(UnsupportedOperationException.class);
+      assertThat(admin.getResourceIdealState("cluster", resource()).getPartitionSet())
+          .containsExactlyInAnyOrder(
+              HelixSegmentResource.partitionName("a"), HelixSegmentResource.partitionName("c"));
+      assertThatThrownBy(
+              () ->
+                  SegmentResourceSync.apply(
+                      manager.getHelixDataAccessor(),
+                      metadata,
+                      "events",
+                      TYPE,
+                      List.of("a", "b"),
+                      10))
+          .isInstanceOf(IOException.class);
+    } finally {
+      manager.disconnect();
+    }
+  }
+
+  @Test
+  void syncRejectsSchemaMismatchEmptyCatalogAndBadArgumentsWithoutUpdating() throws Exception {
+    table();
+    metadata.createSegment(descriptor("events", TYPE, "a", SCHEMA));
+    SegmentResourceBootstrap.create(admin, metadata, "cluster", "events", TYPE, 1, 10);
+    var manager =
+        HelixManagerFactory.getZKHelixManager(
+            "cluster", "observer", InstanceType.SPECTATOR, zk.getConnectString());
+    try {
+      manager.connect();
+      var accessor = manager.getHelixDataAccessor();
+      var wrong =
+          new Schema(SCHEMA.name(), List.of(new Schema.Field("team", Schema.DataType.LONG, false)));
+      metadata.createSegment(descriptor("events", TYPE, "bad", wrong));
+      assertThatThrownBy(
+              () -> SegmentResourceSync.apply(accessor, metadata, "events", TYPE, List.of("a"), 10))
+          .isInstanceOf(IOException.class)
+          .hasMessageContaining("schema mismatch");
+      metadata.deleteSegment("events", TYPE, "bad", 0);
+      metadata.deleteSegment("events", TYPE, "a", 0);
+      assertThatThrownBy(
+              () -> SegmentResourceSync.apply(accessor, metadata, "events", TYPE, List.of("a"), 10))
+          .isInstanceOf(IllegalArgumentException.class);
+      assertThat(admin.getResourceIdealState("cluster", resource()).getPartitionSet())
+          .containsExactly(HelixSegmentResource.partitionName("a"));
+      assertThatNullPointerException()
+          .isThrownBy(
+              () -> SegmentResourceSync.apply(null, metadata, "events", TYPE, List.of("a"), 10));
+      assertThatNullPointerException()
+          .isThrownBy(
+              () -> SegmentResourceSync.apply(accessor, null, "events", TYPE, List.of("a"), 10));
+      assertThatThrownBy(
+              () -> SegmentResourceSync.apply(accessor, metadata, "events", TYPE, List.of(), 10))
+          .isInstanceOf(IllegalArgumentException.class);
+      assertThatThrownBy(
+              () -> SegmentResourceSync.apply(accessor, metadata, "events", TYPE, List.of("a"), 0))
+          .isInstanceOf(IllegalArgumentException.class);
+    } finally {
+      manager.disconnect();
+    }
   }
 }
