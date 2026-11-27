@@ -61,6 +61,18 @@ public final class SegmentResourceBootstrap {
     String resource = HelixSegmentResource.resourceName(tableName, type);
     if (replicas <= 0 || maxSegments <= 0)
       throw new IllegalArgumentException("replicas and maxSegments must be positive");
+    List<String> segments = validatedSegments(metadata, tableName, type, maxSegments);
+    HelixSegmentResource.create(admin, cluster, tableName, type, segments, replicas, maxSegments);
+    return new Result(resource, segments.size());
+  }
+
+  /** Reads and validates one non-transactional segment-name snapshot. */
+  static List<String> validatedSegments(
+      ZooKeeperMetadataStore metadata,
+      String tableName,
+      TableConfig.TableType type,
+      int maxSegments)
+      throws IOException, KeeperException, InterruptedException {
     TableConfig table = metadata.getTable(tableName, type).value();
     Schema schema = metadata.getSchema(table.schemaName()).value();
     List<String> segments = metadata.listSegmentNames(tableName, type, maxSegments);
@@ -71,7 +83,6 @@ public final class SegmentResourceBootstrap {
           || !schema.fields().equals(descriptor.schemaFields()))
         throw new IOException("segment schema mismatch: " + name);
     }
-    HelixSegmentResource.create(admin, cluster, tableName, type, segments, replicas, maxSegments);
-    return new Result(resource, segments.size());
+    return segments;
   }
 }
