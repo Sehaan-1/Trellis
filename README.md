@@ -115,3 +115,7 @@ This is only an extraction primitive. It does not validate Lucene checksums or s
 Run `./mvnw -pl pinot-controller -am verify` for this slice and `./mvnw verify` for the full reactor.
 
 `SegmentBlobs.prepare` also accepts a `SegmentDescriptor`: in addition to the normal checksum and schema validation, this overload rejects archives whose copied byte count or verified document count differs from the descriptor. It does not check table identity or prove that the descriptor is authorized. The same staging, cleanup and trusted-filesystem limitations apply.
+
+## Initial Helix segment resource
+
+`HelixSegmentResource.create` creates a fixed initial full-auto Helix resource for a supplied nonempty segment list and replica count, using the cluster's pre-provisioned `OnlineOffline` state model. Table and segment identities are encoded as canonical URL-safe names; logical names must be nonblank valid Unicode of at most 128 UTF-8 bytes. The caller supplies a segment-count cap, owns the Helix admin, configures ZooKeeper security and coordinates creation. Helix chooses placement when a controller and eligible participants are running. This primitive does not verify metadata or blobs, reconcile subsequent segment changes, implement a participant, ensure replicas are available, or provide leader fencing or cross-store transactions. Creation failures may have uncertain outcomes; inspect Helix before retrying.
