@@ -42,7 +42,7 @@ public final class ControllerRuntime implements AutoCloseable {
    */
   public static ControllerRuntime start(
       HelixManager manager, URI bindUri, ZooKeeperMetadataStore metadata) throws Exception {
-    return startInternal(manager, bindUri, metadata, null);
+    return startInternal(manager, bindUri, metadata, null, null);
   }
 
   /** Starts a controller runtime with the optional upload endpoint explicitly enabled. */
@@ -56,24 +56,38 @@ public final class ControllerRuntime implements AutoCloseable {
     Objects.requireNonNull(metadata, "metadata");
     if (!upload.usesMetadata(metadata))
       throw new IllegalArgumentException("upload must use the same metadata store");
-    return startInternal(manager, bindUri, metadata, upload);
+    return startInternal(manager, bindUri, metadata, upload, null);
+  }
+
+  /** Starts a runtime with explicitly selected optional upload and resource operations. */
+  public static ControllerRuntime start(
+      HelixManager manager,
+      URI bindUri,
+      ZooKeeperMetadataStore metadata,
+      SegmentArchiveUpload upload,
+      SegmentResourceOperations operations)
+      throws Exception {
+    Objects.requireNonNull(metadata, "metadata");
+    if (upload != null && !upload.usesMetadata(metadata))
+      throw new IllegalArgumentException("upload must use the same metadata store");
+    if (operations != null && !operations.usesMetadata(metadata))
+      throw new IllegalArgumentException("operations must use the same metadata store");
+    return startInternal(manager, bindUri, metadata, upload, operations);
   }
 
   private static ControllerRuntime startInternal(
       HelixManager manager,
       URI bindUri,
       ZooKeeperMetadataStore metadata,
-      SegmentArchiveUpload upload)
+      SegmentArchiveUpload upload,
+      SegmentResourceOperations operations)
       throws Exception {
     Objects.requireNonNull(manager, "manager");
     Objects.requireNonNull(bindUri, "bindUri");
     Objects.requireNonNull(metadata, "metadata");
     HelixController controller = HelixController.start(manager);
     try {
-      MetadataHttpServer http =
-          upload == null
-              ? MetadataHttpServer.start(bindUri, metadata)
-              : MetadataHttpServer.start(bindUri, metadata, upload);
+      MetadataHttpServer http = MetadataHttpServer.start(bindUri, metadata, upload, operations);
       return new ControllerRuntime(controller, http);
     } catch (Exception | Error failure) {
       try {
