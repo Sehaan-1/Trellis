@@ -19,13 +19,17 @@ limitations under the License.
   <artifactId>pinot-controller</artifactId>
   <dependencyManagement><dependencies><dependency><groupId>io.trellis</groupId><artifactId>pinot-bom</artifactId><version>${project.version}</version><type>pom</type><scope>import</scope></dependency></dependencies></dependencyManagement>
   <dependencies>
+    <dependency><groupId>io.trellis</groupId><artifactId>pinot-spi</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>io.trellis</groupId><artifactId>pinot-segment-local</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>io.trellis</groupId><artifactId>pinot-common</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>org.apache.zookeeper</groupId><artifactId>zookeeper</artifactId></dependency>
     <dependency><groupId>org.apache.helix</groupId><artifactId>helix-core</artifactId></dependency>
     <dependency><groupId>org.awaitility</groupId><artifactId>awaitility</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.glassfish.jersey.containers</groupId><artifactId>jersey-container-jetty11-http</artifactId></dependency>
     <dependency><groupId>org.glassfish.jersey.inject</groupId><artifactId>jersey-hk2</artifactId></dependency>
     <dependency><groupId>org.glassfish.jersey.media</groupId><artifactId>jersey-media-json-jackson</artifactId></dependency>
     <dependency><groupId>org.eclipse.jetty</groupId><artifactId>jetty-server</artifactId></dependency>
+    <dependency><groupId>io.trellis</groupId><artifactId>pinot-deepstore-local</artifactId><version>${project.version}</version><scope>test</scope></dependency>
     <dependency><groupId>org.apache.curator</groupId><artifactId>curator-test</artifactId><scope>test</scope><exclusions><exclusion><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter-api</artifactId></exclusion></exclusions></dependency>
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><scope>test</scope></dependency>

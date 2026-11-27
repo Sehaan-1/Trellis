@@ -107,3 +107,9 @@ This is only an extraction primitive. It does not validate Lucene checksums or s
 
 
 `listSegmentNames` returns a sorted, immutable name snapshot for one table and type; a missing parent returns an empty list, and a caller-supplied maximum rejects larger results. ZooKeeper still materializes the full child response before the limit is checked. The listing is not paginated and is not a consistent snapshot of descriptor contents; names may disappear or change before a subsequent read. Invalid or noncanonical child names cause an error.
+
+## Local segment registration
+
+`SegmentRegistrar.register` verifies a trusted, stable local segment against the expected schema and limits, stores a bounded archive through `BlobStore`, then creates its descriptor through `ZooKeeperMetadataStore`. It verifies the source twice and requires it to remain unchanged throughout. Blob storage and ZooKeeper are not transactional: failures, including duplicate segment names, can leave orphaned blobs or an uncertain metadata outcome. Reconcile before retrying; archives are not canonical, so retries may produce different keys. The caller manages the blob store, Curator client, staging directory, authentication and ACLs. This is not an HTTP upload endpoint, table/schema referential-integrity check, assignment service, resource sandbox or leader-fenced operation.
+
+Run `./mvnw -pl pinot-controller -am verify` for this slice and `./mvnw verify` for the full reactor.
