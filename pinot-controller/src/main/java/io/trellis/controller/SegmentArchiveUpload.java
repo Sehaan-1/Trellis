@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.concurrent.Semaphore;
 import org.apache.zookeeper.KeeperException;
 
 /** Streams a ZIP into bounded trusted staging, then registers it against the table schema. */
@@ -35,13 +36,21 @@ public final class SegmentArchiveUpload {
     }
   }
 
+  /** Indicates this upload service has reached its active-operation limit. */
+  public static final class TooManyUploadsException extends IOException {
+    public TooManyUploadsException() {
+      super("too many concurrent uploads");
+    }
+  }
+
   private final ZooKeeperMetadataStore metadata;
   private final SegmentArchiveRegistrar registrar;
   private final Path staging;
   private final SegmentArchives.Limits limits;
   private final int maxDocuments;
+  private final Semaphore permits;
 
-  /** Dependencies are caller-owned; the staging directory must remain trusted and stable. */
+  /** Uses a limit of one active upload; dependencies remain caller-owned and staging trusted. */
   public SegmentArchiveUpload(
       ZooKeeperMetadataStore metadata,
       BlobStore blobs,
@@ -49,12 +58,27 @@ public final class SegmentArchiveUpload {
       SegmentArchives.Limits limits,
       int maxDocuments)
       throws IOException {
+    this(metadata, blobs, stagingDirectory, limits, maxDocuments, 1);
+  }
+
+  /** Dependencies are caller-owned; maxConcurrentUploads must be positive. */
+  public SegmentArchiveUpload(
+      ZooKeeperMetadataStore metadata,
+      BlobStore blobs,
+      Path stagingDirectory,
+      SegmentArchives.Limits limits,
+      int maxDocuments,
+      int maxConcurrentUploads)
+      throws IOException {
     this.metadata = Objects.requireNonNull(metadata, "metadata");
     this.registrar = new SegmentArchiveRegistrar(Objects.requireNonNull(blobs, "blobs"), metadata);
     this.staging = Objects.requireNonNull(stagingDirectory, "stagingDirectory");
     this.limits = Objects.requireNonNull(limits, "limits");
     if (maxDocuments < 0) throw new IllegalArgumentException("maxDocuments must be nonnegative");
     this.maxDocuments = maxDocuments;
+    if (maxConcurrentUploads <= 0)
+      throw new IllegalArgumentException("maxConcurrentUploads must be positive");
+    this.permits = new Semaphore(maxConcurrentUploads);
     if (!Files.isDirectory(staging, LinkOption.NOFOLLOW_LINKS))
       throw new IOException("stagingDirectory must be an existing non-symlink directory");
   }
@@ -67,8 +91,9 @@ public final class SegmentArchiveUpload {
    * Reads caller-owned input once without closing it. Table and schema metadata must remain stable
    * throughout the call; reads are not transactional or leader-fenced. A failure may leave an
    * orphaned blob or uncertain metadata outcome. Temporary-file cleanup may fail, and a crash may
-   * leave files. This limit does not bound concurrent requests, elapsed time, validation CPU or
-   * memory. Call only across a trusted boundary with external authentication and resource controls.
+   * leave files. The per-instance limit rejects excess operations without queueing. It does not
+   * bound concurrent requests before this method, other service instances, elapsed time, validation
+   * CPU or memory. Call only across a trusted boundary with external authentication and controls.
    */
   public SegmentRegistrar.Registration upload(
       String tableName, TableConfig.TableType type, String segmentName, InputStream input)
@@ -77,6 +102,17 @@ public final class SegmentArchiveUpload {
     Objects.requireNonNull(type, "type");
     SegmentRegistrar.requireName(segmentName);
     Objects.requireNonNull(input, "input");
+    if (!permits.tryAcquire()) throw new TooManyUploadsException();
+    try {
+      return uploadAcquired(tableName, type, segmentName, input);
+    } finally {
+      permits.release();
+    }
+  }
+
+  private SegmentRegistrar.Registration uploadAcquired(
+      String tableName, TableConfig.TableType type, String segmentName, InputStream input)
+      throws IOException, KeeperException, InterruptedException {
     var table = metadata.getTable(tableName, type).value();
     var schema = metadata.getSchema(table.schemaName()).value();
     try (TempFile temp = new TempFile(Files.createTempFile(staging, ".segment-upload-", ".zip"))) {

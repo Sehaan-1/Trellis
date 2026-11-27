@@ -186,4 +186,96 @@ class SegmentUploadHttpTest {
         .isInstanceOf(java.io.IOException.class);
     emptyStage();
   }
+
+  @Test
+  void rejectsConcurrentUploadsAndReleasesPermitAfterCompletionAndFailure() throws Exception {
+    server = MetadataHttpServer.start(URI.create("http://127.0.0.1:0/"), metadata, upload);
+    var entered = new java.util.concurrent.CountDownLatch(1);
+    var release = new java.util.concurrent.CountDownLatch(1);
+    var slow =
+        new java.io.FilterInputStream(new java.io.ByteArrayInputStream(archive)) {
+          boolean first = true;
+
+          @Override
+          public int read(byte[] bytes, int offset, int length) throws java.io.IOException {
+            if (first) {
+              first = false;
+              entered.countDown();
+              try {
+                if (!release.await(10, TimeUnit.SECONDS))
+                  throw new java.io.IOException("timed out");
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new java.io.IOException(e);
+              }
+            }
+            return super.read(bytes, offset, length);
+          }
+        };
+    var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+    try {
+      var first = executor.submit(() -> upload.upload("events", TYPE, "first", slow));
+      assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+      assertThatThrownBy(
+              () ->
+                  upload.upload(
+                      "events", TYPE, "second", new java.io.ByteArrayInputStream(archive)))
+          .isInstanceOf(SegmentArchiveUpload.TooManyUploadsException.class);
+      assertThat(post("events", "second", archive).statusCode()).isEqualTo(429);
+      release.countDown();
+      assertThat(first.get(20, TimeUnit.SECONDS).descriptor().segmentName()).isEqualTo("first");
+      assertThat(post("events", "bad", new byte[] {1, 2, 3}).statusCode()).isEqualTo(500);
+      assertThat(post("events", "second", archive).statusCode()).isEqualTo(201);
+    } finally {
+      release.countDown();
+      executor.shutdownNow();
+    }
+    emptyStage();
+  }
+
+  @Test
+  void concurrentLimitCanBeConfiguredAndMustBePositive() throws Exception {
+    assertThatThrownBy(() -> new SegmentArchiveUpload(metadata, blobs, stage, LIMITS, 1, 0))
+        .isInstanceOf(IllegalArgumentException.class);
+    var two = new SegmentArchiveUpload(metadata, blobs, stage, LIMITS, 1, 2);
+    var entered = new java.util.concurrent.CountDownLatch(2);
+    var release = new java.util.concurrent.CountDownLatch(1);
+    java.util.function.Supplier<java.io.InputStream> source =
+        () ->
+            new java.io.FilterInputStream(new java.io.ByteArrayInputStream(archive)) {
+              boolean first = true;
+
+              @Override
+              public int read(byte[] bytes, int offset, int length) throws java.io.IOException {
+                if (first) {
+                  first = false;
+                  entered.countDown();
+                  try {
+                    if (!release.await(10, TimeUnit.SECONDS))
+                      throw new java.io.IOException("timed out");
+                  } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new java.io.IOException(e);
+                  }
+                }
+                return super.read(bytes, offset, length);
+              }
+            };
+    var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+    try {
+      var first = executor.submit(() -> two.upload("events", TYPE, "one", source.get()));
+      var second = executor.submit(() -> two.upload("events", TYPE, "two", source.get()));
+      assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+      assertThatThrownBy(
+              () -> two.upload("events", TYPE, "three", new java.io.ByteArrayInputStream(archive)))
+          .isInstanceOf(SegmentArchiveUpload.TooManyUploadsException.class);
+      release.countDown();
+      assertThat(first.get(20, TimeUnit.SECONDS).version()).isZero();
+      assertThat(second.get(20, TimeUnit.SECONDS).version()).isZero();
+    } finally {
+      release.countDown();
+      executor.shutdownNow();
+    }
+    emptyStage();
+  }
 }

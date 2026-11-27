@@ -182,6 +182,8 @@ public final class MetadataResource {
       throw e;
     } catch (IllegalArgumentException e) {
       return Response.status(400).entity(new ErrorBody("invalid request")).build();
+    } catch (SegmentArchiveUpload.TooManyUploadsException e) {
+      return Response.status(429).entity(new ErrorBody("too many concurrent uploads")).build();
     } catch (SegmentArchiveUpload.TooLargeException e) {
       return Response.status(413).entity(new ErrorBody("archive exceeds size limit")).build();
     } catch (ZooKeeperMetadataStore.SegmentLimitExceededException e) {
