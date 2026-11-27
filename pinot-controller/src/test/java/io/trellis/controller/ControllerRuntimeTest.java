@@ -87,6 +87,19 @@ class ControllerRuntimeTest {
     assertThat(runtime.isConnected()).isTrue();
     try {
       var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+      var status =
+          http.send(
+              HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/controller/status"))
+                  .GET()
+                  .build(),
+              HttpResponse.BodyHandlers.ofString());
+      assertThat(status.statusCode()).isEqualTo(200);
+      assertThat(status.headers().firstValue("Cache-Control")).contains("no-store");
+      var statusJson = new com.fasterxml.jackson.databind.ObjectMapper().readTree(status.body());
+      assertThat(statusJson.path("connected").isBoolean()).isTrue();
+      assertThat(statusJson.path("connected").booleanValue()).isTrue();
+      assertThat(statusJson.path("leader").isBoolean()).isTrue();
+
       var body =
           "{\"name\":\"games\",\"fields\":[{\"name\":\"team\",\"type\":\"STRING\",\"multiValue\":false}]}";
       var request =
@@ -107,6 +120,18 @@ class ControllerRuntimeTest {
     assertThat(curator.getZookeeperClient().isConnected()).isTrue();
     assertThatThrownBy(runtime::port).isInstanceOf(IllegalStateException.class);
     assertThat(metadata.getSchema("games").value().name()).isEqualTo("games");
+  }
+
+  @Test
+  void statusResourceReportsClosedController() throws Exception {
+    assertThatNullPointerException().isThrownBy(() -> new ControllerStatusResource(null));
+    var controller = HelixController.start(manager);
+    var resource = new ControllerStatusResource(controller);
+    controller.close();
+    var response = resource.get();
+    assertThat(response.getStatus()).isEqualTo(200);
+    assertThat(response.getHeaderString("Cache-Control")).isEqualTo("no-store");
+    assertThat(response.getEntity()).isEqualTo(new ControllerStatusResource.Status(false, false));
   }
 
   @Test
@@ -194,6 +219,18 @@ class ControllerRuntimeTest {
     try (var runtime = ControllerRuntime.startIntegrated(manager, admin, metadata, blobs, config)) {
       var http = HttpClient.newHttpClient();
       String base = "http://127.0.0.1:" + runtime.port();
+      var status =
+          http.send(
+              HttpRequest.newBuilder(URI.create(base + "/controller/status")).GET().build(),
+              HttpResponse.BodyHandlers.ofString());
+      assertThat(status.statusCode()).isEqualTo(200);
+      assertThat(
+              new com.fasterxml.jackson.databind.ObjectMapper()
+                  .readTree(status.body())
+                  .path("connected")
+                  .booleanValue())
+          .isTrue();
+
       var upload =
           HttpRequest.newBuilder(URI.create(base + "/tables/OFFLINE/events/segments/one/content"))
               .header("Content-Type", "application/octet-stream")

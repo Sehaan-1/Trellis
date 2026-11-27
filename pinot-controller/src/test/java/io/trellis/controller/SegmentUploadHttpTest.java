@@ -146,6 +146,17 @@ class SegmentUploadHttpTest {
   void uploadRequiresOptInAndMatchingMetadataStore() throws Exception {
     server = MetadataHttpServer.start(URI.create("http://127.0.0.1:0/"), metadata);
     assertThat(post("events", "part", archive).statusCode()).isEqualTo(404);
+    var status =
+        HttpRequest.newBuilder(
+                URI.create("http://127.0.0.1:" + server.port() + "/controller/status"))
+            .GET()
+            .build();
+    assertThat(
+            HttpClient.newHttpClient()
+                .send(status, HttpResponse.BodyHandlers.ofString())
+                .statusCode())
+        .isEqualTo(404);
+
     var other = new ZooKeeperMetadataStore(client, "/other");
     assertThatThrownBy(
             () -> MetadataHttpServer.start(URI.create("http://127.0.0.1:0/"), other, upload))

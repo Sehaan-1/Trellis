@@ -150,7 +150,9 @@ public final class ControllerRuntime implements AutoCloseable {
               manager.getClusterName(),
               config.replicas(),
               config.maxSegments());
-      var http = MetadataHttpServer.start(config.bindUri(), metadata, upload, operations);
+      var http =
+          MetadataHttpServer.startForRuntime(
+              config.bindUri(), metadata, upload, operations, controller);
       return new ControllerRuntime(controller, http);
     } catch (Exception | Error failure) {
       try {
@@ -174,7 +176,8 @@ public final class ControllerRuntime implements AutoCloseable {
     Objects.requireNonNull(metadata, "metadata");
     HelixController controller = HelixController.start(manager);
     try {
-      MetadataHttpServer http = MetadataHttpServer.start(bindUri, metadata, upload, operations);
+      MetadataHttpServer http =
+          MetadataHttpServer.startForRuntime(bindUri, metadata, upload, operations, controller);
       return new ControllerRuntime(controller, http);
     } catch (Exception | Error failure) {
       try {
