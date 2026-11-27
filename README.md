@@ -74,3 +74,9 @@ Run `./mvnw -pl pinot-controller -am verify` for controller and prerequisite tes
 The local store requires an existing trusted directory and a filesystem that supports hard links and `NOFOLLOW_LINKS`. It does not fsync the directory or promise survival of power loss; crashes can leave staged files, and a failure after publication may have an uncertain outcome. It assumes no out-of-band modification of the store and makes the usual SHA-256 collision-resistance assumption. It is not yet a segment validator, upload endpoint or S3/GCS implementation.
 
 Run `./mvnw -pl pinot-deepstore-local -am verify` for the storage slice.
+
+## Bounded segment-archive extraction
+
+`SegmentArchives.extract` extracts a flat ZIP into a new directory under caller-supplied compressed-size, entry-count, per-file and total expanded-size limits. It rejects paths, directory entries and case-insensitive duplicate names, and checks each entry's declared size and CRC-32. It uses ZIP central-directory entries; the archive and target parent must remain trusted and stable during extraction. The target is visible while extraction runs and must not be consumed until success. Failed extraction attempts cleanup but cleanup can itself fail.
+
+This is only an extraction primitive. It does not validate Lucene checksums or segment metadata, publish a segment, provide an upload endpoint, or guarantee power-loss durability. Do not treat successful extraction as a verified segment.
