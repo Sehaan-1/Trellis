@@ -84,3 +84,7 @@ This is only an extraction primitive. It does not validate Lucene checksums or s
 ## Local segment integrity validation
 
 `SegmentVerifier.verify` checks an existing Trellis segment against a caller-supplied schema and maximum document count. It reuses Apache Lucene `org.apache.lucene:lucene-core:9.12.0` `CheckIndex` with slow checks, validates the Trellis metadata, disallows deleted documents and checks forward-value presence and valid UTF-8 across every leaf. It acquires Lucene's writer lock and requires a trusted, stable local directory with no out-of-band changes. It may use substantial CPU and memory: the document cap is not a byte, time or memory limit, and this is not a sandbox for hostile inputs. It does not extract archives, authenticate data, publish files or implement upload.
+
+## Local archive preparation
+
+`SegmentPreparation.prepare` composes bounded archive extraction with local segment integrity validation against the expected schema and document limit. The target must not exist and is visible during preparation; consume it only after success. Validation failure triggers best-effort cleanup, and cleanup failures are suppressed on the original error. The archive and filesystem must remain trusted and stable. This is not atomic publication, upload, authentication or a resource sandbox; the extraction and verification limitations above still apply.
