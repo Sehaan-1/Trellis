@@ -96,3 +96,7 @@ This is only an extraction primitive. It does not validate Lucene checksums or s
 ## Segment blob transfer
 
 `SegmentBlobs.put` stages a bounded, verified segment archive before storing it through `BlobStore`; `SegmentBlobs.prepare` copies a blob into bounded staging, then extracts and verifies it. The existing staging directory, segment, target parent and filesystem must be trusted and stable. The blob store must honor its checksum-verification contract. The target is visible during preparation and must not be consumed before success. Staging files are removed on completion or failure, but cleanup may fail; a cleanup failure after preparation means the target may remain even though the call failed, and a failure after a put may leave a published blob. Crashes may leave staging files. ZIP bytes are not canonical, so retries need not produce the same blob key. This is not controller metadata publication, atomic serving, upload, or an untrusted-input sandbox.
+
+## Segment descriptor records
+
+`SegmentDescriptor` is an immutable claim identifying a table and segment, a complete ordered schema snapshot, a SHA-256 blob key and size, and a document count. `SegmentDescriptorRecord` converts it to and from a versioned Helix `ZNRecord`. A descriptor alone does not prove that the blob exists, matches the claimed size or schema, or has been validated; consumers must perform those checks. This is a metadata contract only: it does not persist records, coordinate assignments, publish segments or enforce table/schema referential integrity.
