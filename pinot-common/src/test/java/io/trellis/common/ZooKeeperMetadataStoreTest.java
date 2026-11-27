@@ -285,4 +285,44 @@ class ZooKeeperMetadataStoreTest {
       }
     }
   }
+
+  @Test
+  void listsSegmentNamesSortedBoundedAndScoped() throws Exception {
+    var offline = TableConfig.TableType.OFFLINE;
+    var realtime = TableConfig.TableType.REALTIME;
+    assertThat(store.listSegmentNames("events", offline, 0)).isEmpty();
+    store.createSegment(segment("events", offline, "z", 1));
+    store.createSegment(segment("events", offline, "a / å", 1));
+    store.createSegment(segment("events", realtime, "real", 1));
+    store.createSegment(segment("other", offline, "other", 1));
+    var names = store.listSegmentNames("events", offline, 2);
+    assertThat(names).containsExactly("a / å", "z");
+    assertThatThrownBy(() -> names.add("x")).isInstanceOf(UnsupportedOperationException.class);
+    assertThat(store.listSegmentNames("events", realtime, 1)).containsExactly("real");
+    assertThat(store.listSegmentNames("other", offline, 1)).containsExactly("other");
+    assertThatThrownBy(() -> store.listSegmentNames("events", offline, 1))
+        .isInstanceOf(IOException.class);
+    assertThatThrownBy(() -> store.listSegmentNames("events", offline, -1))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatNullPointerException().isThrownBy(() -> store.listSegmentNames("events", null, 1));
+    assertThatThrownBy(() -> store.listSegmentNames("\uD800", offline, 1))
+        .isInstanceOf(IllegalArgumentException.class);
+    store.deleteSegment("events", offline, "z", 0);
+    assertThat(store.listSegmentNames("events", offline, 2)).containsExactly("a / å");
+  }
+
+  @Test
+  void listingRejectsInvalidAndNoncanonicalChildNames() throws Exception {
+    var type = TableConfig.TableType.OFFLINE;
+    store.createSegment(segment("table", type, "valid", 1));
+    String parent = "/trellis/test/segments/OFFLINE/dGFibGU/";
+    for (String invalid : List.of("-", "YQ==", "_w", "IA")) {
+      String path = parent + invalid;
+      client.create().forPath(path);
+      assertThatThrownBy(() -> store.listSegmentNames("table", type, 10))
+          .isInstanceOf(IOException.class);
+      client.delete().forPath(path);
+    }
+    assertThat(store.listSegmentNames("table", type, 10)).containsExactly("valid");
+  }
 }

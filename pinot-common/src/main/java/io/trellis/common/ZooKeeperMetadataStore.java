@@ -22,7 +22,9 @@ import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.Objects;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.helix.zookeeper.datamodel.ZNRecord;
@@ -166,6 +168,36 @@ public final class ZooKeeperMetadataStore {
     delete(segmentPath(tableName, type, segmentName), version);
   }
 
+  /**
+   * Lists a point-in-time sorted snapshot of segment names for one table and type. A missing
+   * segment parent yields an empty list. The limit prevents returning too many names but does not
+   * bound ZooKeeper's response size or memory use. Names may be added or removed before callers
+   * read their descriptors; this is neither pagination nor a consistent descriptor snapshot.
+   */
+  public List<String> listSegmentNames(String tableName, TableConfig.TableType type, int maxNames)
+      throws KeeperException, InterruptedException, IOException {
+    if (maxNames < 0) throw new IllegalArgumentException("maxNames must be nonnegative");
+    String path = segmentParentPath(tableName, type);
+    List<String> children;
+    try {
+      children = client.getChildren().forPath(path);
+    } catch (KeeperException.NoNodeException e) {
+      return List.of();
+    } catch (KeeperException e) {
+      throw e;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw e;
+    } catch (Exception e) {
+      throw new IOException("segment listing failed", e);
+    }
+    if (children.size() > maxNames) throw new IOException("segment count exceeds maxNames");
+    List<String> names = new ArrayList<>(children.size());
+    for (String child : children) names.add(decodeNameKey(child));
+    names.sort(String::compareTo);
+    return List.copyOf(names);
+  }
+
   private static void validateSchemaNames(Schema schema) {
     nameKey(schema.name());
     for (Schema.Field field : schema.fields()) nameKey(field.name());
@@ -181,14 +213,29 @@ public final class ZooKeeperMetadataStore {
   }
 
   private String segmentPath(String tableName, TableConfig.TableType type, String segmentName) {
+    return segmentParentPath(tableName, type) + "/" + nameKey(segmentName);
+  }
+
+  private String segmentParentPath(String tableName, TableConfig.TableType type) {
     Objects.requireNonNull(type, "type");
-    return base
-        + "/segments/"
-        + type.name()
-        + "/"
-        + nameKey(tableName)
-        + "/"
-        + nameKey(segmentName);
+    return base + "/segments/" + type.name() + "/" + nameKey(tableName);
+  }
+
+  private static String decodeNameKey(String key) throws IOException {
+    try {
+      byte[] bytes = Base64.getUrlDecoder().decode(key);
+      String name =
+          StandardCharsets.UTF_8
+              .newDecoder()
+              .onMalformedInput(CodingErrorAction.REPORT)
+              .onUnmappableCharacter(CodingErrorAction.REPORT)
+              .decode(ByteBuffer.wrap(bytes))
+              .toString();
+      if (!nameKey(name).equals(key)) throw new IllegalArgumentException("noncanonical name key");
+      return name;
+    } catch (IllegalArgumentException | CharacterCodingException e) {
+      throw new IOException("invalid segment name key", e);
+    }
   }
 
   private static String nameKey(String name) {
