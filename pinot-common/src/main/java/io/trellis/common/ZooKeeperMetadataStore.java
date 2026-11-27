@@ -14,6 +14,7 @@ limitations under the License.
 package io.trellis.common;
 
 import io.trellis.spi.Schema;
+import io.trellis.spi.SegmentDescriptor;
 import io.trellis.spi.TableConfig;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -119,6 +120,52 @@ public final class ZooKeeperMetadataStore {
     delete(tablePath(name, type), version);
   }
 
+  /** Creates a descriptor; this does not validate or publish the referenced blob. */
+  public int createSegment(SegmentDescriptor descriptor)
+      throws KeeperException, InterruptedException, IOException {
+    Objects.requireNonNull(descriptor, "descriptor");
+    validateSchemaNames(descriptor.schema());
+    return create(
+        segmentPath(descriptor.tableName(), descriptor.tableType(), descriptor.segmentName()),
+        SegmentDescriptorRecord.encode(descriptor));
+  }
+
+  /** Reads a descriptor, rejecting malformed data and identity mismatches. */
+  public Versioned<SegmentDescriptor> getSegment(
+      String tableName, TableConfig.TableType type, String segmentName)
+      throws KeeperException, InterruptedException, IOException {
+    var stored = read(segmentPath(tableName, type, segmentName));
+    try {
+      SegmentDescriptor descriptor = SegmentDescriptorRecord.decode(stored.value());
+      if (!descriptor.tableName().equals(tableName)
+          || descriptor.tableType() != type
+          || !descriptor.segmentName().equals(segmentName))
+        throw new IllegalArgumentException("segment identity mismatch");
+      validateSchemaNames(descriptor.schema());
+      return new Versioned<>(descriptor, stored.version());
+    } catch (IllegalArgumentException | NullPointerException e) {
+      throw new IOException("invalid segment metadata", e);
+    }
+  }
+
+  /** Replaces a descriptor under the same identity using the expected ZooKeeper version. */
+  public int updateSegment(SegmentDescriptor descriptor, int version)
+      throws KeeperException, InterruptedException, IOException {
+    Objects.requireNonNull(descriptor, "descriptor");
+    validateSchemaNames(descriptor.schema());
+    return update(
+        segmentPath(descriptor.tableName(), descriptor.tableType(), descriptor.segmentName()),
+        SegmentDescriptorRecord.encode(descriptor),
+        version);
+  }
+
+  /** Deletes one descriptor using the expected ZooKeeper version, without deleting its blob. */
+  public void deleteSegment(
+      String tableName, TableConfig.TableType type, String segmentName, int version)
+      throws KeeperException, InterruptedException, IOException {
+    delete(segmentPath(tableName, type, segmentName), version);
+  }
+
   private static void validateSchemaNames(Schema schema) {
     nameKey(schema.name());
     for (Schema.Field field : schema.fields()) nameKey(field.name());
@@ -131,6 +178,17 @@ public final class ZooKeeperMetadataStore {
   private String tablePath(String name, TableConfig.TableType type) {
     Objects.requireNonNull(type, "type");
     return base + "/tables/" + type.name() + "/" + nameKey(name);
+  }
+
+  private String segmentPath(String tableName, TableConfig.TableType type, String segmentName) {
+    Objects.requireNonNull(type, "type");
+    return base
+        + "/segments/"
+        + type.name()
+        + "/"
+        + nameKey(tableName)
+        + "/"
+        + nameKey(segmentName);
   }
 
   private static String nameKey(String name) {

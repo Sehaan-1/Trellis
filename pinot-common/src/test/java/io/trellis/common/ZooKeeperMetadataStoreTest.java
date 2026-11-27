@@ -16,7 +16,9 @@ package io.trellis.common;
 import static org.assertj.core.api.Assertions.*;
 
 import io.trellis.spi.Schema;
+import io.trellis.spi.SegmentDescriptor;
 import io.trellis.spi.TableConfig;
+import io.trellis.spi.storage.BlobStore;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -168,5 +170,119 @@ class ZooKeeperMetadataStoreTest {
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> new ZooKeeperMetadataStore(client, "relative"))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  private static SegmentDescriptor segment(
+      String table, TableConfig.TableType type, String name, int rows) {
+    return new SegmentDescriptor(
+        table,
+        type,
+        name,
+        "schema",
+        List.of(new Schema.Field("x", Schema.DataType.STRING, false)),
+        new BlobStore.StoredBlob(new BlobStore.Key("a".repeat(64)), 123),
+        rows);
+  }
+
+  @Test
+  void segmentCrudUsesVersionsAndIndependentTableIdentities() throws Exception {
+    var a = segment("table / å", TableConfig.TableType.OFFLINE, "segment / 1", 3);
+    var b = segment(a.tableName(), TableConfig.TableType.REALTIME, a.segmentName(), 4);
+    var c = segment("different", a.tableType(), a.segmentName(), 5);
+    assertThat(store.createSegment(a)).isZero();
+    assertThat(store.createSegment(b)).isZero();
+    assertThat(store.createSegment(c)).isZero();
+    assertThatThrownBy(() -> store.createSegment(a))
+        .isInstanceOf(KeeperException.NodeExistsException.class);
+    assertThat(store.getSegment(a.tableName(), a.tableType(), a.segmentName()).value())
+        .isEqualTo(a);
+    var changed = segment(a.tableName(), a.tableType(), a.segmentName(), 10);
+    assertThat(store.updateSegment(changed, 0)).isEqualTo(1);
+    assertThatThrownBy(() -> store.updateSegment(a, 0))
+        .isInstanceOf(KeeperException.BadVersionException.class);
+    assertThatThrownBy(() -> store.deleteSegment(a.tableName(), a.tableType(), a.segmentName(), 0))
+        .isInstanceOf(KeeperException.BadVersionException.class);
+    assertThatThrownBy(() -> store.deleteSegment(a.tableName(), a.tableType(), a.segmentName(), -1))
+        .isInstanceOf(IllegalArgumentException.class);
+    try (var another = newClient()) {
+      var other = new ZooKeeperMetadataStore(another, "/trellis/test");
+      assertThat(other.getSegment(a.tableName(), a.tableType(), a.segmentName()).value())
+          .isEqualTo(changed);
+      other.deleteSegment(a.tableName(), a.tableType(), a.segmentName(), 1);
+    }
+    assertThatThrownBy(() -> store.getSegment(a.tableName(), a.tableType(), a.segmentName()))
+        .isInstanceOf(KeeperException.NoNodeException.class);
+    assertThat(store.getSegment(b.tableName(), b.tableType(), b.segmentName()).value())
+        .isEqualTo(b);
+    assertThat(store.getSegment(c.tableName(), c.tableType(), c.segmentName()).value())
+        .isEqualTo(c);
+  }
+
+  @Test
+  void segmentRecordsRejectCorruptionWrongIdentitiesAndInvalidNames() throws Exception {
+    var original = segment("table", TableConfig.TableType.OFFLINE, "segment", 1);
+    store.createSegment(original);
+    String path = "/trellis/test/segments/OFFLINE/dGFibGU/c2VnbWVudA";
+    client.setData().forPath(path, new byte[] {1, 2, 3});
+    assertThatThrownBy(() -> store.getSegment("table", TableConfig.TableType.OFFLINE, "segment"))
+        .isInstanceOf(IOException.class);
+    for (var other :
+        List.of(
+            segment("other", TableConfig.TableType.OFFLINE, "segment", 1),
+            segment("table", TableConfig.TableType.REALTIME, "segment", 1),
+            segment("table", TableConfig.TableType.OFFLINE, "other", 1))) {
+      ZNRecord record = SegmentDescriptorRecord.encode(other);
+      record.setSimpleField("trellis.metadata.version", "1");
+      client.setData().forPath(path, new ZNRecordSerializer().serialize(record));
+      assertThatThrownBy(() -> store.getSegment("table", TableConfig.TableType.OFFLINE, "segment"))
+          .isInstanceOf(IOException.class);
+    }
+    assertThatThrownBy(() -> store.getSegment("table", TableConfig.TableType.OFFLINE, "\uD800"))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatNullPointerException().isThrownBy(() -> store.createSegment(null));
+    assertThatNullPointerException().isThrownBy(() -> store.updateSegment(null, 0));
+    assertThatNullPointerException().isThrownBy(() -> store.getSegment("table", null, "segment"));
+  }
+
+  @Test
+  void competingSegmentUpdatesOnlyOneSucceeds() throws Exception {
+    var original = segment("table", TableConfig.TableType.OFFLINE, "segment", 1);
+    store.createSegment(original);
+    try (var another = newClient()) {
+      var other = new ZooKeeperMetadataStore(another, "/trellis/test");
+      var executor = Executors.newFixedThreadPool(2);
+      var start = new CountDownLatch(1);
+      try {
+        java.util.concurrent.Callable<Boolean> left =
+            () -> {
+              start.await();
+              try {
+                store.updateSegment(original, 0);
+                return true;
+              } catch (KeeperException.BadVersionException e) {
+                return false;
+              }
+            };
+        java.util.concurrent.Callable<Boolean> right =
+            () -> {
+              start.await();
+              try {
+                other.updateSegment(original, 0);
+                return true;
+              } catch (KeeperException.BadVersionException e) {
+                return false;
+              }
+            };
+        var a = executor.submit(left);
+        var b = executor.submit(right);
+        start.countDown();
+        assertThat(List.of(a.get(10, TimeUnit.SECONDS), b.get(10, TimeUnit.SECONDS)))
+            .containsExactlyInAnyOrder(true, false);
+        assertThat(store.getSegment("table", TableConfig.TableType.OFFLINE, "segment").version())
+            .isEqualTo(1);
+      } finally {
+        executor.shutdownNow();
+      }
+    }
   }
 }
