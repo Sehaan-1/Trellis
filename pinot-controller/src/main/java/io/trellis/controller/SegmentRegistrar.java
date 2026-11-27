@@ -91,7 +91,7 @@ public final class SegmentRegistrar {
     return new Registration(descriptor, version);
   }
 
-  private static void requireName(String name) {
+  static void requireName(String name) {
     Objects.requireNonNull(name, "name");
     if (name.isBlank()) throw new IllegalArgumentException("name must not be blank");
     try {
