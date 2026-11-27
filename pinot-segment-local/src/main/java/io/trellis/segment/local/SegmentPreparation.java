@@ -36,6 +36,17 @@ public final class SegmentPreparation {
   public static Report prepare(
       Path archive, Path target, SegmentArchives.Limits limits, Schema expected, int maxDocuments)
       throws IOException {
+    return prepare(archive, target, limits, expected, maxDocuments, null);
+  }
+
+  static Report prepare(
+      Path archive,
+      Path target,
+      SegmentArchives.Limits limits,
+      Schema expected,
+      int maxDocuments,
+      Integer expectedDocuments)
+      throws IOException {
     Objects.requireNonNull(archive, "archive");
     Objects.requireNonNull(target, "target");
     Objects.requireNonNull(limits, "limits");
@@ -44,7 +55,10 @@ public final class SegmentPreparation {
     LocalSegments.validateSchema(expected);
     SegmentArchives.Report extraction = SegmentArchives.extract(archive, target, limits);
     try {
-      return new Report(extraction, SegmentVerifier.verify(target, expected, maxDocuments));
+      SegmentVerifier.Report verified = SegmentVerifier.verify(target, expected, maxDocuments);
+      if (expectedDocuments != null && verified.documents() != expectedDocuments)
+        throw new IOException("segment document count mismatch");
+      return new Report(extraction, verified);
     } catch (IOException | RuntimeException | Error failure) {
       try {
         try (var files = Files.list(target)) {
