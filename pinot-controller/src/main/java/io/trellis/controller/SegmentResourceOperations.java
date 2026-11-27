@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Objects;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixDataAccessor;
+import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.IdealState;
 import org.apache.zookeeper.KeeperException;
 
@@ -94,6 +95,62 @@ public final class SegmentResourceOperations {
     } catch (IllegalArgumentException e) {
       throw new IOException("invalid resource partition", e);
     }
+  }
+
+  /** A segment and instance IDs observed in Helix's ONLINE state, not verified reachability. */
+  public record ObservedSegment(String segmentName, List<String> onlineInstances) {
+    public ObservedSegment {
+      Objects.requireNonNull(segmentName, "segmentName");
+      onlineInstances = List.copyOf(onlineInstances);
+    }
+  }
+
+  /** An immutable external-view observation, which may be stale or incomplete. */
+  public record Observed(String resourceName, List<ObservedSegment> segments) {
+    public Observed {
+      Objects.requireNonNull(resourceName, "resourceName");
+      segments = List.copyOf(segments);
+    }
+  }
+
+  /**
+   * Reads Helix's eventually consistent external view. Missing and unreadable views fail; absent
+   * partitions are not evidence that a segment has no replicas. Only exact ONLINE states are
+   * returned, without checking live instances, reachability, blob integrity or query readiness. The
+   * configured segment cap and per-segment instance cap reject oversized outputs, but Helix
+   * materializes the entire external view before either limit is checked.
+   */
+  public Observed observed(String tableName, TableConfig.TableType type, int maxInstances)
+      throws IOException {
+    if (maxInstances <= 0) throw new IllegalArgumentException("maxInstances must be positive");
+    String resource = HelixSegmentResource.resourceName(tableName, type);
+    ExternalView view = accessor.getProperty(accessor.keyBuilder().externalView(resource));
+    if (view == null) throw new IOException("external view missing or unreadable");
+    if (!resource.equals(view.getResourceName())
+        || view.getBucketSize() != 0
+        || view.getPartitionSet().size() > maxSegments)
+      throw new IOException("external view incompatible or exceeds segment limit");
+    List<ObservedSegment> segments = new ArrayList<>(view.getPartitionSet().size());
+    try {
+      for (String partition : view.getPartitionSet()) {
+        String segment = SegmentHelixIdentity.segmentName(partition);
+        var states = view.getStateMap(partition);
+        if (states == null || states.size() > maxInstances)
+          throw new IOException("invalid or excessive instance states");
+        List<String> online = new ArrayList<>();
+        for (var entry : states.entrySet()) {
+          if (entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null)
+            throw new IOException("invalid instance state");
+          if ("ONLINE".equals(entry.getValue())) online.add(entry.getKey());
+        }
+        online.sort(String::compareTo);
+        segments.add(new ObservedSegment(segment, online));
+      }
+    } catch (IllegalArgumentException e) {
+      throw new IOException("invalid external view partition", e);
+    }
+    segments.sort(java.util.Comparator.comparing(ObservedSegment::segmentName));
+    return new Observed(resource, segments);
   }
 
   /** Creates one resource from stable, schema-checked metadata. */

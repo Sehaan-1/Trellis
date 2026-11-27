@@ -127,7 +127,7 @@ public final class MetadataResource {
         segment.documents());
   }
 
-  private static int segmentLimit(String value) {
+  static int segmentLimit(String value) {
     if (value == null || !value.matches("[1-9][0-9]{0,4}"))
       throw new IllegalArgumentException("max must be between 1 and 10000");
     int count = Integer.parseInt(value);

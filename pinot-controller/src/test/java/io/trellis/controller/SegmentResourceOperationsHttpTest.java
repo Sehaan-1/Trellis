@@ -35,6 +35,7 @@ import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.model.BuiltInStateModelDefinitions;
+import org.apache.helix.model.ExternalView;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -200,5 +201,69 @@ class SegmentResourceOperationsHttpTest {
     }
     assertThat(controller.isConnected()).isFalse();
     assertThat(operations.snapshot("events", TYPE).segments()).containsExactly("a");
+  }
+
+  @Test
+  void readsBoundedExternalViewWithoutClaimingReadiness() throws Exception {
+    server =
+        MetadataHttpServer.start(URI.create("http://127.0.0.1:0/"), metadata, null, operations);
+    String resource = HelixSegmentResource.resourceName("events", TYPE);
+    var accessor = manager.getHelixDataAccessor();
+    assertThatThrownBy(() -> operations.observed("events", TYPE, 3))
+        .isInstanceOf(java.io.IOException.class);
+    // Synthetic Helix external view, persisted through the real ZooKeeper-backed accessor.
+    var view = new ExternalView(resource);
+    view.setState(HelixSegmentResource.partitionName("b"), "offline-node", "OFFLINE");
+    view.setState(HelixSegmentResource.partitionName("a"), "z-node", "ONLINE");
+    view.setState(HelixSegmentResource.partitionName("a"), "a-node", "ONLINE");
+    view.setState(HelixSegmentResource.partitionName("a"), "error-node", "ERROR");
+    assertThat(accessor.setProperty(accessor.keyBuilder().externalView(resource), view)).isTrue();
+    var result = operations.observed("events", TYPE, 3);
+    assertThat(result.resourceName()).isEqualTo(resource);
+    assertThat(result.segments())
+        .containsExactly(
+            new SegmentResourceOperations.ObservedSegment("a", List.of("a-node", "z-node")),
+            new SegmentResourceOperations.ObservedSegment("b", List.of()));
+    assertThatThrownBy(() -> result.segments().clear())
+        .isInstanceOf(UnsupportedOperationException.class);
+    assertThatThrownBy(() -> result.segments().get(0).onlineInstances().clear())
+        .isInstanceOf(UnsupportedOperationException.class);
+    assertThatThrownBy(() -> operations.observed("events", TYPE, 2))
+        .isInstanceOf(java.io.IOException.class);
+    assertThatThrownBy(() -> operations.observed("events", TYPE, 0))
+        .isInstanceOf(IllegalArgumentException.class);
+    String base =
+        "http://127.0.0.1:" + server.port() + "/tables/OFFLINE/events/assignment/observed";
+    var http = HttpClient.newHttpClient();
+    var read =
+        http.send(
+            HttpRequest.newBuilder(URI.create(base + "?maxInstances=3")).GET().build(),
+            HttpResponse.BodyHandlers.ofString());
+    assertThat(read.statusCode()).isEqualTo(200);
+    assertThat(read.body())
+        .contains("a-node", "z-node", "onlineInstances")
+        .doesNotContain("offline-node", "error-node");
+    assertThat(
+            http.send(
+                    HttpRequest.newBuilder(URI.create(base + "?maxInstances=0")).GET().build(),
+                    HttpResponse.BodyHandlers.ofString())
+                .statusCode())
+        .isEqualTo(400);
+    assertThat(
+            http.send(
+                    HttpRequest.newBuilder(URI.create(base)).GET().build(),
+                    HttpResponse.BodyHandlers.ofString())
+                .statusCode())
+        .isEqualTo(400);
+    assertThat(
+            http.send(
+                    HttpRequest.newBuilder(URI.create(base + "?maxInstances=2")).GET().build(),
+                    HttpResponse.BodyHandlers.ofString())
+                .statusCode())
+        .isEqualTo(500);
+    view.setState("not-a-valid-partition", "node", "ONLINE");
+    assertThat(accessor.setProperty(accessor.keyBuilder().externalView(resource), view)).isTrue();
+    assertThatThrownBy(() -> operations.observed("events", TYPE, 3))
+        .isInstanceOf(java.io.IOException.class);
   }
 }
