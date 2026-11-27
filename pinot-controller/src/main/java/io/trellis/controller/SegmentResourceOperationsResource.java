@@ -21,6 +21,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -47,6 +48,22 @@ public final class SegmentResourceOperationsResource {
         () ->
             Response.ok(
                     operations.snapshot(MetadataResource.name(table), MetadataResource.type(type)))
+                .build());
+  }
+
+  @GET
+  @Path("observed")
+  public Response observed(
+      @PathParam("type") String type,
+      @PathParam("name") String table,
+      @QueryParam("maxInstances") String maxInstances) {
+    return MetadataResource.perform(
+        () ->
+            Response.ok(
+                    operations.observed(
+                        MetadataResource.name(table),
+                        MetadataResource.type(type),
+                        MetadataResource.segmentLimit(maxInstances)))
                 .build());
   }
 
