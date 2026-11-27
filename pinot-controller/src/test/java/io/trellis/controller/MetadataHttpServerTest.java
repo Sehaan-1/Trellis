@@ -184,4 +184,87 @@ class MetadataHttpServerTest {
     assertThatThrownBy(() -> MetadataHttpServer.start(URI.create("http://127.0.0.1:1/path"), store))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  private static String segmentBody(String table, String type, String name, int documents) {
+    return "{\"tableName\":\""
+        + table
+        + "\",\"type\":\""
+        + type
+        + "\",\"segmentName\":\""
+        + name
+        + "\",\"schemaName\":\"games\",\"fields\":[{\"name\":\"team\",\"type\":\"STRING\",\"multiValue\":false}],\"sha256\":\""
+        + "a".repeat(64)
+        + "\",\"bytes\":123,\"documents\":"
+        + documents
+        + "}";
+  }
+
+  @Test
+  void segmentsSupportScopedOptimisticCrudAndBoundedListing() throws Exception {
+    String collection = "/tables/OFFLINE/events/segments";
+    String item = collection + "/one";
+    String first = segmentBody("events", "OFFLINE", "one", 1);
+    var created = call("POST", collection, first, null);
+    assertThat(created.statusCode()).as("Response: %s", created.body()).isEqualTo(201);
+    assertThat(etag(created)).isEqualTo("\"0\"");
+    assertThat(created.headers().firstValue("Location"))
+        .hasValueSatisfying(location -> assertThat(location).endsWith(item));
+    assertThat(call("POST", collection, first, null).statusCode()).isEqualTo(409);
+    var read = call("GET", item, null, null);
+    assertThat(read.statusCode()).isEqualTo(200);
+    assertThat(read.body()).contains("one", "games", "STRING", "documents", "a".repeat(64));
+    assertThat(etag(read)).isEqualTo("\"0\"");
+    assertThat(call("GET", collection + "?max=1", null, null).body()).contains("one");
+    assertThat(
+            call("POST", collection, segmentBody("events", "OFFLINE", "two", 1), null).statusCode())
+        .isEqualTo(201);
+    assertThat(call("GET", collection + "?max=1", null, null).statusCode()).isEqualTo(422);
+    assertThat(call("DELETE", collection + "/two", null, "\"0\"").statusCode()).isEqualTo(204);
+    assertThat(call("GET", collection, null, null).statusCode()).isEqualTo(400);
+    assertThat(call("GET", collection + "?max=10001", null, null).statusCode()).isEqualTo(400);
+    assertThat(call("PUT", item, first, null).statusCode()).isEqualTo(428);
+    var updated = call("PUT", item, segmentBody("events", "OFFLINE", "one", 2), "\"0\"");
+    assertThat(updated.statusCode()).isEqualTo(204);
+    assertThat(etag(updated)).isEqualTo("\"1\"");
+    assertThat(call("PUT", item, first, "\"0\"").statusCode()).isEqualTo(412);
+    assertThat(call("DELETE", item, null, "\"0\"").statusCode()).isEqualTo(412);
+    assertThat(call("DELETE", item, null, "\"1\"").statusCode()).isEqualTo(204);
+    assertThat(call("GET", item, null, null).statusCode()).isEqualTo(404);
+    assertThat(call("GET", collection + "?max=1", null, null).body()).isEqualTo("[]");
+  }
+
+  @Test
+  void segmentEndpointsRejectInvalidMetadataAndIsolateTableType() throws Exception {
+    String offline = "/tables/OFFLINE/events/segments";
+    String realtime = "/tables/REALTIME/events/segments";
+    String a = segmentBody("events", "OFFLINE", "one", 1);
+    String b = segmentBody("events", "REALTIME", "one", 1);
+    assertThat(call("POST", offline, b, null).statusCode()).isEqualTo(400);
+    assertThat(call("POST", offline, a.replace("a".repeat(64), "bad"), null).statusCode())
+        .isEqualTo(400);
+    assertThat(
+            call("POST", offline, a.replace("\"documents\":1", "\"documents\":-1"), null)
+                .statusCode())
+        .isEqualTo(400);
+    assertThat(call("POST", offline, a.replace("\"bytes\":123", "\"bytes\":-1"), null).statusCode())
+        .isEqualTo(400);
+    assertThat(
+            call("POST", offline, a.replace("\"name\":\"team\"", "\"name\":\"bad/name\""), null)
+                .statusCode())
+        .isEqualTo(400);
+    assertThat(call("POST", offline, a, null).statusCode()).isEqualTo(201);
+    assertThat(call("POST", realtime, b, null).statusCode()).isEqualTo(201);
+    assertThat(
+            call(
+                    "PUT",
+                    offline + "/one",
+                    a.replace("\"segmentName\":\"one\"", "\"segmentName\":\"other\""),
+                    "\"0\"")
+                .statusCode())
+        .isEqualTo(400);
+    assertThat(call("DELETE", offline + "/one", null, "\"0\"").statusCode()).isEqualTo(204);
+    assertThat(call("GET", realtime + "/one", null, null).statusCode()).isEqualTo(200);
+    assertThat(call("GET", "/tables/BOGUS/events/segments?max=1", null, null).statusCode())
+        .isEqualTo(400);
+  }
 }

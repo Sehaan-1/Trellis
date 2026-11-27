@@ -15,7 +15,9 @@ package io.trellis.controller;
 
 import io.trellis.common.ZooKeeperMetadataStore;
 import io.trellis.spi.Schema;
+import io.trellis.spi.SegmentDescriptor;
 import io.trellis.spi.TableConfig;
+import io.trellis.spi.storage.BlobStore;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -26,6 +28,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.EntityTag;
@@ -46,6 +49,16 @@ public final class MetadataResource {
   public record SchemaBody(String name, List<FieldBody> fields) {}
 
   public record TableBody(String tableName, String schemaName, String type) {}
+
+  public record SegmentBody(
+      String tableName,
+      String type,
+      String segmentName,
+      String schemaName,
+      List<FieldBody> fields,
+      String sha256,
+      Long bytes,
+      Integer documents) {}
 
   public record ErrorBody(String error) {}
 
@@ -83,6 +96,43 @@ public final class MetadataResource {
         schema.fields().stream()
             .map(f -> new FieldBody(f.name(), f.type().name(), f.multiValue()))
             .toList());
+  }
+
+  private static SegmentDescriptor segment(SegmentBody body) {
+    if (body == null
+        || body.type() == null
+        || body.sha256() == null
+        || body.bytes() == null
+        || body.documents() == null) throw new IllegalArgumentException("missing segment metadata");
+    Schema snapshot = schema(new SchemaBody(body.schemaName(), body.fields()));
+    return new SegmentDescriptor(
+        name(body.tableName()),
+        type(body.type()),
+        name(body.segmentName()),
+        snapshot.name(),
+        snapshot.fields(),
+        new BlobStore.StoredBlob(new BlobStore.Key(body.sha256()), body.bytes()),
+        body.documents());
+  }
+
+  private static SegmentBody body(SegmentDescriptor segment) {
+    return new SegmentBody(
+        segment.tableName(),
+        segment.tableType().name(),
+        segment.segmentName(),
+        segment.schemaName(),
+        body(segment.schema()).fields(),
+        segment.blob().key().sha256(),
+        segment.blob().size(),
+        segment.documents());
+  }
+
+  private static int segmentLimit(String value) {
+    if (value == null || !value.matches("[1-9][0-9]{0,4}"))
+      throw new IllegalArgumentException("max must be between 1 and 10000");
+    int count = Integer.parseInt(value);
+    if (count > 10000) throw new IllegalArgumentException("max must be between 1 and 10000");
+    return count;
   }
 
   private static TableConfig table(TableBody body) {
@@ -132,6 +182,8 @@ public final class MetadataResource {
       throw e;
     } catch (IllegalArgumentException e) {
       return Response.status(400).entity(new ErrorBody("invalid request")).build();
+    } catch (ZooKeeperMetadataStore.SegmentLimitExceededException e) {
+      return Response.status(422).entity(new ErrorBody("segment count exceeds max")).build();
     } catch (KeeperException.NodeExistsException e) {
       return Response.status(409).entity(new ErrorBody("already exists")).build();
     } catch (KeeperException.BadVersionException e) {
@@ -253,6 +305,85 @@ public final class MetadataResource {
         () -> {
           int v = ifMatch(match);
           store.deleteTable(name(name), type(type), v);
+          return Response.noContent().build();
+        });
+  }
+
+  @GET
+  @Path("tables/{type}/{name}/segments")
+  public Response listSegments(
+      @PathParam("type") String type,
+      @PathParam("name") String table,
+      @QueryParam("max") String max) {
+    return perform(
+        () ->
+            Response.ok(store.listSegmentNames(name(table), type(type), segmentLimit(max)))
+                .build());
+  }
+
+  @POST
+  @Path("tables/{type}/{name}/segments")
+  public Response createSegment(
+      @PathParam("type") String type,
+      @PathParam("name") String table,
+      SegmentBody request,
+      @Context UriInfo uri) {
+    return perform(
+        () -> {
+          var segment = segment(request);
+          if (!name(table).equals(segment.tableName()) || type(type) != segment.tableType())
+            throw new IllegalArgumentException("identity mismatch");
+          int version = store.createSegment(segment);
+          return Response.created(uri.getAbsolutePathBuilder().path(segment.segmentName()).build())
+              .tag(tag(version))
+              .build();
+        });
+  }
+
+  @GET
+  @Path("tables/{type}/{name}/segments/{segment}")
+  public Response getSegment(
+      @PathParam("type") String type,
+      @PathParam("name") String table,
+      @PathParam("segment") String segment) {
+    return perform(
+        () -> {
+          var value = store.getSegment(name(table), type(type), name(segment));
+          return Response.ok(body(value.value())).tag(tag(value.version())).build();
+        });
+  }
+
+  @PUT
+  @Path("tables/{type}/{name}/segments/{segment}")
+  public Response updateSegment(
+      @PathParam("type") String type,
+      @PathParam("name") String table,
+      @PathParam("segment") String segment,
+      @HeaderParam("If-Match") String match,
+      SegmentBody request) {
+    return perform(
+        () -> {
+          int version = ifMatch(match);
+          var value = segment(request);
+          if (!name(table).equals(value.tableName())
+              || type(type) != value.tableType()
+              || !name(segment).equals(value.segmentName()))
+            throw new IllegalArgumentException("identity mismatch");
+          return Response.noContent().tag(tag(store.updateSegment(value, version))).build();
+        });
+  }
+
+  @DELETE
+  @Path("tables/{type}/{name}/segments/{segment}")
+  public Response deleteSegment(
+      @PathParam("type") String type,
+      @PathParam("name") String table,
+      @PathParam("segment") String segment,
+      @HeaderParam("If-Match") String match) {
+    return perform(
+        () -> {
+          int version = ifMatch(match);
+          store.deleteSegment(name(table), type(type), name(segment), version);
           return Response.noContent().build();
         });
   }
